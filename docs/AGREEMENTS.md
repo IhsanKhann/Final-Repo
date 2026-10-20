@@ -162,6 +162,34 @@ institution, each institution using its own vocabulary for the same quantities.
 
 ---
 
+## 6b. Contract change — `MappingPatchPayload.target_field` (2026-10-20)
+
+**Decided by Ihsan. The only change to `types.ts` so far, and it is additive.**
+
+```ts
+target_field?: string;   // added — optional, existing calls unaffected
+```
+
+**Why.** `MappingPatchPayload` was `{action, value?, unit?, reason?}`. An analyst could
+accept, reject, or edit the *value* — but never say which **field** a value belongs in.
+Two consequences, both measured:
+
+- A review row whose `target_field` is empty — which is every review row when the model is
+  unavailable, because `Unavailable` correctly routes to `review` — **could never be
+  resolved through the API at all.** Demo steps 5 and 6 were not performable without a key.
+- The most valuable precedent of all is *"you mapped this to the wrong field, it is this
+  one"*, and the contract could not express it. An analyst who can only rate the system's
+  guess is not correcting the mapping. Requirement 5 is **analyst corrections feeding back
+  into the mapping**, so the payload has to carry the correction, not a verdict on it.
+
+**Frontend impact: none required.** The field is optional; existing accept/reject calls are
+unchanged. Tahreem adds a field picker to the review drawer when she wants the full
+correction flow — until then the backend accepts it and the UI simply never sends it.
+
+**This does not replace demoing with a key.** With a key the mapper proposes a field and
+`accept` works end to end; that is the demo path. `target_field` is what makes the degraded
+path and the genuine *correction* case possible.
+
 ## 7. Open blockers, with owners
 
 | # | Blocker | Owner | Unblocks |

@@ -222,6 +222,19 @@ export interface PaginatedResponse<T> {
 
 export interface MappingPatchPayload {
   action: 'accept' | 'reject' | 'edit';
+  /**
+   * The canonical field the analyst says this value belongs in.
+   *
+   * Added 2026-10-20 (see docs/AGREEMENTS.md §9). Optional and additive — existing
+   * accept/reject calls are unaffected. It exists because without it an analyst can
+   * rate the system's guess but never correct it: a review row whose target_field is
+   * empty (the model was unavailable, or proposed nothing) could never be resolved
+   * through the API, and the most valuable precedent of all — "you mapped this to the
+   * wrong field, it is THIS one" — was inexpressible. Requirement 5 is analyst
+   * corrections feeding back into the mapping, so the contract has to carry the
+   * correction, not just a verdict on it.
+   */
+  target_field?: string;
   value?: string;
   unit?: string;
   reason?: string;
