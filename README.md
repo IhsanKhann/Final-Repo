@@ -1,26 +1,37 @@
-# Document Standardization & Schema Mapping Systems
+# Enterprise Document Standardization & Schema Mapping Platform
 
-This repository contains two enterprise document intelligence solutions:
-
-1. **Document Standardization Pipeline (`doc-standardization-pipeline/`)**: Event-driven GCP architecture using Document AI, Eventarc, Cloud Run (`min-instances=0`), OpenAI GPT-4o, and BigQuery with a React + Node.js analyst review portal.
-2. **DataSync (`Frontend/`)**: Autonomous 5-stage document standardization and canonical schema mapping agent application.
+A streamlined enterprise document processing and canonical schema mapping platform.
 
 ---
 
-## 📁 Repository Structure
+## 🏛️ Architecture & Components
 
 ```
 Final-Repo/
-├── doc-standardization-pipeline/   # GCP Document AI + Eventarc + OpenAI + BigQuery Pipeline
-│   ├── terraform/                   # Terraform IaC (GCS, DocAI, Cloud Run, Eventarc, BigQuery)
-│   ├── backend/                     # Node.js Express Backend
-│   ├── frontend/                    # React (Vite + Tailwind) Analyst Dashboard
-│   ├── image_b9f2e2.png             # Architecture Diagram Asset
-│   ├── .env.example
-│   └── README.md
-├── Frontend/                        # DataSync React + TypeScript Client
+├── Frontend/                        # Unified React + TypeScript Application (Vite on port 5173)
 │   ├── src/
+│   │   ├── api/                     # Backend API client, endpoints, and mock fallback
+│   │   ├── components/              # Provenance viewer, overlays, and shell
+│   │   ├── pages/                   # Batches, Review, Upload, Schema, Insights, Dataset, Health
+│   │   ├── App.tsx                  # Router & navigation
+│   │   └── main.tsx
 │   ├── package.json
+│   ├── tsconfig.json
+│   └── vite.config.ts               # Proxies /api to Node.js backend (port 8080)
+├── doc-standardization-pipeline/
+│   ├── backend/                     # Node.js Express Backend (port 8080)
+│   │   ├── src/
+│   │   │   ├── app.js               # Eventarc hook, BigQuery streaming, Review Queue API
+│   │   │   └── services/
+│   │   │       ├── documentAiService.js  # Doc AI extraction, >15 page batch routing, HTTP 429 backoff
+│   │   │       └── openaiService.js      # GPT-4o agentic mapping, unit conversions, ambiguity scoring
+│   │   ├── package.json
+│   │   └── Dockerfile               # Container for Cloud Run (min-instances=0)
+│   ├── terraform/                   # Infrastructure as Code
+│   │   ├── main.tf                  # Provisions GCS buckets, SA, Doc AI, Cloud Run, Eventarc, BigQuery
+│   │   ├── variables.tf
+│   │   └── provider.tf
+│   ├── .env.example
 │   └── README.md
 ├── .gitignore
 └── README.md
@@ -28,26 +39,22 @@ Final-Repo/
 
 ---
 
-## 1. Document Standardization Pipeline (`doc-standardization-pipeline/`)
+## 🚀 Running Locally
 
-An event-driven document processing system on Google Cloud Platform:
-- **GCS & Eventarc**: Ingestion triggers Cloud Run automatically.
-- **Document AI**: Pre-processes page counts; automatically switches to async batch processing for $>15$ pages, with HTTP 429 exponential backoff retries.
-- **OpenAI GPT-4o Agent**: Performs unit conversions, structured JSON normalization, and ambiguity confidence scoring (`requires_human_review`).
-- **BigQuery Feedback Loop**: High-confidence records stream to `normalized_records`, while flagged items stream to `review_queue` for analyst correction.
-- **Local Dashboard**: Runs at [http://localhost:3000](http://localhost:3000) (Backend at [http://localhost:8080](http://localhost:8080)).
+### 1. Start the Node.js Backend
+```bash
+cd doc-standardization-pipeline/backend
+npm install
+npm start
+```
+> Running on **http://localhost:8080**  
+> Health check: `http://localhost:8080/api/health`
 
-For full deployment and operational details, see [`doc-standardization-pipeline/README.md`](file:///d:/Final-Repo/doc-standardization-pipeline/README.md).
-
----
-
-## 2. DataSync Client (`Frontend/`)
-
-Autonomous document standardization with split-screen provenance and bounding box review.
-
+### 2. Start the Frontend
 ```bash
 cd Frontend
 npm install
 npm run dev
 ```
-Runs at [http://localhost:5173](http://localhost:5173).
+> Running on **http://localhost:5173**  
+> Automatically proxies `/api` requests to the Node.js backend.
