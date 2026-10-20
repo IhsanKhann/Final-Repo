@@ -6,15 +6,11 @@ import type {
   SettingsView, SettingsPatch, ControlView, SecretView,
 } from './types';
 import { ENDPOINTS } from './endpoints';
-import {
-  MOCK_BATCHES, MOCK_MAPPINGS, MOCK_REVIEW_QUEUE, MOCK_INSIGHTS,
-  MOCK_HEALTH, MOCK_HOME_STATS, MOCK_PACKS, MOCK_RECORDS,
-} from './mockData';
 
-const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true';
+// Mock responses were removed once every route served real data. A switchable mock
+// is a way to demo fabricated numbers by accident: the UI looks healthy either way.
 
 // ─── Helper ─────────────────────────────────────────────────────────────────
-const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 async function apiFetch<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {
@@ -41,23 +37,15 @@ export class ApiError extends Error {
 
 // ─── Home ────────────────────────────────────────────────────────────────────
 export async function getHomeStats(): Promise<HomeStats> {
-  if (USE_MOCK) { await delay(300); return MOCK_HOME_STATS; }
   return apiFetch<HomeStats>(ENDPOINTS.home.stats());
 }
 
 // ─── Batches ─────────────────────────────────────────────────────────────────
 export async function getBatches(): Promise<Batch[]> {
-  if (USE_MOCK) { await delay(400); return MOCK_BATCHES; }
   return apiFetch<Batch[]>(ENDPOINTS.batches.list());
 }
 
 export async function getBatch(id: string): Promise<Batch> {
-  if (USE_MOCK) {
-    await delay(200);
-    const b = MOCK_BATCHES.find(x => x.id === id);
-    if (!b) throw new ApiError(404, 'Batch not found', id);
-    return b;
-  }
   return apiFetch<Batch>(ENDPOINTS.batches.get(id));
 }
 
@@ -66,24 +54,6 @@ export async function createBatch(
   files: File[],
   onProgress?: (pct: number) => void,
 ): Promise<Batch> {
-  if (USE_MOCK) {
-    // Simulate upload progress
-    for (let p = 0; p <= 100; p += 20) { onProgress?.(p); await delay(200); }
-    const mock: Batch = {
-      id: `batch-${Date.now()}`,
-      name: `Batch ${new Date().toLocaleTimeString()}`,
-      pack_id: payload.pack_id,
-      pack_name: MOCK_PACKS.find(p => p.id === payload.pack_id)?.name ?? payload.pack_id,
-      files: files.map((f, i) => ({
-        id: `f-${i}`, name: f.name, type: f.type, size: f.size,
-        status: 'ready', progress: 0,
-      })),
-      stage: 'ingesting', status: 'running',
-      created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-    };
-    MOCK_BATCHES.unshift(mock);
-    return mock;
-  }
   const form = new FormData();
   form.append('pack_id', payload.pack_id);
   if (payload.url) form.append('url', payload.url);
@@ -94,31 +64,17 @@ export async function createBatch(
 }
 
 export async function cancelBatch(id: string): Promise<void> {
-  if (USE_MOCK) { await delay(200); return; }
   await apiFetch<void>(ENDPOINTS.batches.cancel(id), { method: 'POST' });
 }
 
 export async function getBatchRecords(
   id: string, page = 1, perPage = 50,
 ): Promise<PaginatedResponse<DatasetRecord>> {
-  if (USE_MOCK) {
-    await delay(300);
-    return { data: MOCK_RECORDS, total: MOCK_RECORDS.length, page, per_page: perPage };
-  }
   return apiFetch<PaginatedResponse<DatasetRecord>>(ENDPOINTS.batches.records(id, page, perPage));
 }
 
 // ─── Documents ───────────────────────────────────────────────────────────────
 export async function getDocumentMappings(docId: string): Promise<Mapping[]> {
-  if (USE_MOCK) {
-    await delay(400);
-    const maps = MOCK_MAPPINGS.filter(m => m.document_id === docId);
-    if (!maps.length) {
-      // Simulate an error case for testing
-      if (docId === 'doc-error') throw new ApiError(503, 'AI service unavailable', docId);
-    }
-    return maps;
-  }
   return apiFetch<Mapping[]>(ENDPOINTS.documents.mappings(docId));
 }
 
@@ -126,31 +82,12 @@ export async function getDocumentMappings(docId: string): Promise<Mapping[]> {
 export async function patchMapping(
   id: string, payload: MappingPatchPayload,
 ): Promise<MappingPatchResponse> {
-  if (USE_MOCK) {
-    await delay(250);
-    const m = MOCK_MAPPINGS.find(x => x.id === id);
-    if (!m) throw new ApiError(404, 'Mapping not found', id);
-    const updated = { ...m, status: payload.action === 'accept' ? 'approved' as const : payload.action === 'reject' ? 'rejected' as const : m.status };
-    if (payload.value) updated.value = payload.value;
-    if (payload.unit) updated.unit = payload.unit;
-    Object.assign(m, updated);
-    const learned = Math.random() > 0.5;
-    return { mapping: updated, learned, learned_message: learned ? `Learned: "${m.source_label}" → "${m.target_field}" mapping updated` : undefined };
-  }
   return apiFetch<MappingPatchResponse>(ENDPOINTS.mappings.patch(id), {
     method: 'PATCH', body: JSON.stringify(payload),
   });
 }
 
 export async function bulkAcceptMappings(payload: BulkAcceptPayload): Promise<BulkAcceptResponse> {
-  if (USE_MOCK) {
-    await delay(500);
-    const maps = MOCK_MAPPINGS.filter(
-      m => m.document_id === payload.document_id && m.confidence >= payload.min_confidence,
-    );
-    maps.forEach(m => { m.status = 'approved'; });
-    return { accepted_count: maps.length, mappings: maps };
-  }
   return apiFetch<BulkAcceptResponse>(ENDPOINTS.mappings.bulkAccept(), {
     method: 'POST', body: JSON.stringify(payload),
   });
@@ -158,34 +95,19 @@ export async function bulkAcceptMappings(payload: BulkAcceptPayload): Promise<Bu
 
 // ─── Review Queue ─────────────────────────────────────────────────────────────
 export async function getReviewQueue(): Promise<ReviewQueueItem[]> {
-  if (USE_MOCK) { await delay(350); return MOCK_REVIEW_QUEUE; }
   return apiFetch<ReviewQueueItem[]>(ENDPOINTS.reviewQueue.list());
 }
 
 // ─── Schema Packs ─────────────────────────────────────────────────────────────
 export async function getPacks(): Promise<SchemaPack[]> {
-  if (USE_MOCK) { await delay(200); return MOCK_PACKS; }
   return apiFetch<SchemaPack[]>(ENDPOINTS.packs.list());
 }
 
 export async function getPack(id: string): Promise<SchemaPack> {
-  if (USE_MOCK) {
-    await delay(200);
-    const p = MOCK_PACKS.find(x => x.id === id);
-    if (!p) throw new ApiError(404, 'Pack not found', id);
-    return p;
-  }
   return apiFetch<SchemaPack>(ENDPOINTS.packs.get(id));
 }
 
 export async function updatePack(id: string, pack: Partial<SchemaPack>): Promise<SchemaPack> {
-  if (USE_MOCK) {
-    await delay(300);
-    const idx = MOCK_PACKS.findIndex(x => x.id === id);
-    if (idx === -1) throw new ApiError(404, 'Pack not found', id);
-    Object.assign(MOCK_PACKS[idx], pack);
-    return MOCK_PACKS[idx];
-  }
   return apiFetch<SchemaPack>(ENDPOINTS.packs.update(id), {
     method: 'PUT', body: JSON.stringify(pack),
   });
@@ -193,88 +115,25 @@ export async function updatePack(id: string, pack: Partial<SchemaPack>): Promise
 
 // ─── Insights ─────────────────────────────────────────────────────────────────
 export async function getInsights(): Promise<Insights> {
-  if (USE_MOCK) { await delay(400); return MOCK_INSIGHTS; }
   return apiFetch<Insights>(ENDPOINTS.insights.get());
 }
 
 // ─── Health ───────────────────────────────────────────────────────────────────
 export async function getHealth(): Promise<HealthStatus> {
-  if (USE_MOCK) { await delay(150); return MOCK_HEALTH; }
   return apiFetch<HealthStatus>(ENDPOINTS.health.get());
 }
 
 // ─── Settings (config layer) ─────────────────────────────────────────────────
-// Mirrors `backend/api/settings.py`. The mock below exists only so the page still
-// renders with VITE_USE_MOCK=true; it reports every value as coming from `default`,
-// which is the honest answer when there is no store behind it.
-
-const MOCK_CONTROL_DEFAULTS: ReadonlyArray<[string, string, string | number]> = [
-  ['active_pack_id', 'ACTIVE_PACK_ID', ''],
-  ['analyst_minutes_per_field', 'ANALYST_MINUTES_PER_FIELD', 1.5],
-  ['async_page_threshold', 'ASYNC_PAGE_THRESHOLD', 15],
-  ['gate_auto_threshold', 'GATE_AUTO_THRESHOLD', 0.9],
-  ['gate_review_threshold', 'GATE_REVIEW_THRESHOLD', 0.6],
-  ['max_tokens', 'MAX_TOKENS', 1024],
-  ['model', 'MODEL', 'gpt-4o-2024-11-20'],
-  ['prompt_version', 'PROMPT_VERSION', 'v1'],
-  ['provider', 'PROVIDER', 'openai'],
-  ['temperature', 'TEMPERATURE', 0],
-  ['timeout_s', 'TIMEOUT_S', 30],
-  ['token_budget_per_doc', 'TOKEN_BUDGET_PER_DOC', 40000],
-  ['vision_model', 'VISION_MODEL', 'gpt-4o-2024-11-20'],
-];
-
-const MOCK_SECRET_IDS: ReadonlyArray<[string, string]> = [
-  ['anthropic_api_key', 'ANTHROPIC_API_KEY'],
-  ['docai_processor_id', 'DOCAI_PROCESSOR_ID'],
-  ['google_api_key', 'GOOGLE_API_KEY'],
-  ['openai_api_key', 'OPENAI_API_KEY'],
-  ['openrouter_api_key', 'OPENROUTER_API_KEY'],
-];
-
-const MOCK_CONTROLS: ControlView[] = MOCK_CONTROL_DEFAULTS.map(([key, env_var, def]) => ({
-  key, env_var, value: def, default: def, source: 'default' as const,
-}));
-
-const MOCK_SECRETS: SecretView[] = MOCK_SECRET_IDS.map(([id, env_var]) => ({
-  id, env_var, present: false, source: 'unset' as const,
-}));
+// Mirrors `backend/api/settings.py`. The control and secret lists used to be mirrored
+// here as mock constants; they are gone because the Settings page's whole purpose is
+// showing where each value RESOLVED FROM, and a hardcoded list reporting everything as
+// `default` is the one answer that cannot be wrong on screen while being wrong in fact.
 
 export async function getSettings(): Promise<SettingsView> {
-  if (USE_MOCK) {
-    await delay(200);
-    return {
-      tenant_id: 'demo',
-      controls: MOCK_CONTROLS,
-      secrets: MOCK_SECRETS,
-      checked_at: new Date().toISOString(),
-      updated: [],
-    };
-  }
   return apiFetch<SettingsView>(ENDPOINTS.settings.get());
 }
 
 export async function patchSettings(patch: SettingsPatch): Promise<SettingsView> {
-  if (USE_MOCK) {
-    await delay(250);
-    const updated: string[] = [];
-    Object.entries(patch.controls ?? {}).forEach(([key, value]) => {
-      const row = MOCK_CONTROLS.find(c => c.key === key);
-      if (row) { row.value = value; row.source = 'db'; updated.push(`controls.${key}`); }
-    });
-    Object.entries(patch.secrets ?? {}).forEach(([id, value]) => {
-      const row = MOCK_SECRETS.find(s => s.id === id);
-      // A stored "" is a value: present goes false but the source is still db.
-      if (row) { row.present = value !== ''; row.source = 'db'; updated.push(`secrets.${id}`); }
-    });
-    return {
-      tenant_id: 'demo',
-      controls: MOCK_CONTROLS,
-      secrets: MOCK_SECRETS,
-      checked_at: new Date().toISOString(),
-      updated: updated.sort(),
-    };
-  }
   return apiFetch<SettingsView>(ENDPOINTS.settings.update(), {
     method: 'PATCH', body: JSON.stringify(patch),
   });
@@ -286,25 +145,6 @@ export function connectBatchEvents(
   onEvent: (e: import('./types').AgentEvent) => void,
   onError?: (err: Event) => void,
 ): EventSource | (() => void) {
-  if (USE_MOCK) {
-    // Simulate SSE stream with mock events
-    const steps = [
-      { agent: 'Ingestion Agent', step: 'ingest', status: 'running' as const, message: 'Reading uploaded files…' },
-      { agent: 'OCR Agent', step: 'parse', status: 'running' as const, message: 'Extracting text with Document AI…' },
-      { agent: 'OCR Agent', step: 'parse', status: 'done' as const, message: 'Text extracted from all pages' },
-      { agent: 'Mapping Agent', step: 'map', status: 'running' as const, message: 'Identifying fields with Gemini…' },
-      { agent: 'Mapping Agent', step: 'map', status: 'done' as const, message: '42 fields identified, 12 need review' },
-      { agent: 'Normalization Agent', step: 'normalize', status: 'running' as const, message: 'Applying unit conversions…' },
-      { agent: 'Validation Agent', step: 'validate', status: 'done' as const, message: 'All business rules checked. Ready.' },
-    ];
-    let i = 0;
-    const interval = setInterval(() => {
-      if (i >= steps.length) { clearInterval(interval); return; }
-      onEvent({ id: `evt-${i}`, timestamp: new Date().toISOString(), ...steps[i] });
-      i++;
-    }, 1200);
-    return () => clearInterval(interval);
-  }
   const es = new EventSource(ENDPOINTS.batches.events(batchId));
   es.onmessage = e => {
     try { onEvent(JSON.parse(e.data)); } catch { /* ignore parse errors */ }

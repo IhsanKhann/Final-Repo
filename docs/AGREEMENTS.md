@@ -293,21 +293,30 @@ would be inventing domain knowledge, which Law III forbids.
 **`DatasetRecord.id` changes meaning, not shape** — it stops being the document id and
 becomes the record key. No type change needed.
 
-## 7. Open blockers, with owners
+## 7. Blockers, with owners — two cleared, one done, one open
 
-| # | Blocker | Owner | Unblocks |
-|---|---|---|---|
-| B1 | **No open billing account.** Claim the hackathon credits, or open a trial on one of the three logins, then `gcloud billing projects link ps12-canon-hackathon26 --billing-account=<ID>` | Ali + Ihsan | all of Ali's lane |
-| B2 | Ali has no IAM on the project yet — the grant command is in §8 | Ihsan (one command) | Ali can start Terraform |
-| B3 | Golden set unconfirmed (0 / 30) | Ihsan + Tahreem | every accuracy number |
-| B4 | `packs/banking_rates.yaml` not yet authored | Ihsan | the mapper has no target vocabulary |
+| # | Blocker | Owner | Unblocks | State |
+|---|---|---|---|---|
+| B1 | **No open billing account.** Claim the hackathon credits, or open a trial on one of the three logins, then `gcloud billing projects link ps12-canon-hackathon26 --billing-account=<ID>` | Ali + Ihsan | all of Ali's lane | ✅ **CLEARED 2026-10-20** — linked via credit account `01B200-E38381-6CFD0E`; the backend is deployed and healthy (§1) |
+| B2 | Ali has no IAM on the project yet — the grant command is in §8 | Ihsan (one command) | Ali can start Terraform | ✅ **CLEARED 2026-10-20** — Ali holds `roles/editor` and `roles/resourcemanager.projectIamAdmin` on `ps12-canon-hackathon26`, verified in the IAM policy |
+| B3 | Golden set unconfirmed (0 / 30) | Ihsan + Tahreem | every accuracy number | 🔴 **OPEN.** Still 0 of 30 confirmed, so **no accuracy number exists anywhere in this repo** and the scorer refuses to print one (§6). This is now the single largest gap |
+| B4 | `packs/banking_rates.yaml` not yet authored | Ihsan | the mapper has no target vocabulary | ✅ **DONE** — the pack exists at `version: 1.0.0`, `status: ACCEPTED`, `accepted_by: Ihsan Khan`, `accepted_at: 2026-10-20` |
+
+**B3 is the one to carry.** B1 and B2 were access problems and access problems end. B3 is
+the reason every evaluation-criteria number in the README is written as *measurable* rather
+than *measured*, and no amount of deployment fixes it.
 
 ---
 
 ## 8. Commands a human has to run
 
+**The IAM grants and the billing link below have been run (2026-10-20) — B1 and B2 are
+cleared.** They stay here because they are the reproduction steps for a fresh project and
+because the `roles/owner` finding underneath them is the kind of thing that costs an hour
+twice.
+
 ```bash
-# Ihsan — grant Ali access to the project.
+# Ihsan — grant Ali access to the project.   [RUN 2026-10-20 — both grants applied]
 #
 # ⚠ roles/owner CANNOT be granted by CLI here. On a project with no organization,
 # Google requires owners to be INVITED through the Console and returns
@@ -326,6 +335,7 @@ gcloud projects add-iam-policy-binding ps12-canon-hackathon26 \
 #   console.cloud.google.com → IAM & Admin → IAM → Grant access → invite, he accepts by email.
 
 # Either — link billing once an account is open
+#   [RUN 2026-10-20 with --billing-account=01B200-E38381-6CFD0E — see §1]
 gcloud billing projects link ps12-canon-hackathon26 --billing-account=<OPEN_ACCOUNT_ID>
 
 # Ali — once billing is live

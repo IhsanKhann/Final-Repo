@@ -103,6 +103,32 @@ CONTROLS: dict[str, ControlSpec] = {
         ControlSpec(
             key="async_page_threshold", env_var="ASYNC_PAGE_THRESHOLD", default=15, cast="int"
         ),
+        # The per-file upload cap, in bytes. 64 MiB because of how the upload is carried,
+        # not because of what a disk can store: the route hands the service one `bytes`
+        # object and every adapter holds the whole document in memory while it reads it,
+        # so the ceiling is roughly what a single worker can hold twice over. A long
+        # scanned document lands in the tens of megabytes and fits with headroom; a
+        # half-gigabyte file is refused before it is read, which is the point. An operator
+        # raises it the same way they move a gate threshold.
+        ControlSpec(
+            key="upload_max_bytes",
+            env_var="UPLOAD_MAX_BYTES",
+            default=64 * 1024 * 1024,
+            cast="int",
+        ),
+        # The tier allowance, metered in DOCUMENTS and named for what it meters. The
+        # published figure is 100 a month and the default keeps it, but what is counted is
+        # documents rather than pages: `AdapterResult.page_count` is set by the two PDF
+        # adapters and left None by csv, sheet, html and narrative, so a page sum would
+        # meter four of six formats at zero and an uncounted document is indistinguishable
+        # from a free one. Page granularity needs those adapters to define a page first.
+        # 0 or below means no limit, which is how an unmetered tenant is expressed today.
+        ControlSpec(
+            key="monthly_document_quota",
+            env_var="MONTHLY_DOCUMENT_QUOTA",
+            default=100,
+            cast="int",
+        ),
         ControlSpec(
             key="analyst_minutes_per_field",
             env_var="ANALYST_MINUTES_PER_FIELD",

@@ -33,6 +33,36 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "data" / "samples" / "ps06_sample_rate_sheets.csv"
 OUT = Path(__file__).resolve().parent / "golden_set.csv"
+#: Written by make_documents.py. It is the only authority on what each institution's
+#: generated document is actually called.
+GROUND_TRUTH = Path(__file__).resolve().parent / "generated" / "ground_truth.json"
+
+
+def generated_files() -> dict[str, str]:
+    """institution -> the filename make_documents.py actually wrote.
+
+    ⚠ THIS EXISTS BECAUSE THE GOLDEN SET SCORED 0 MATCHES AGAINST A WORKING PIPELINE.
+
+    The first version keyed each gold row on `ps06.source_file` -- names like
+    `first_national_bank_rates_page1.pdf`, which describe the ORIGINAL bank rate sheets
+    the sample data was derived from. Nothing by that name is ever ingested: what the
+    pipeline reads is `first_national_bank_rates.pdf`, written by make_documents.py. So
+    every key missed, `matched` came back 0, and accuracy would have read 0.0 while the
+    pipeline was mapping correctly -- the worst shape of bug, because the number looks
+    like catastrophic failure rather than like a broken join.
+
+    Reading the filename from ground_truth.json rather than restating it keeps the two
+    generators from drifting apart silently, the same reason REPORTING_STYLE is shared.
+    """
+    import json
+
+    if not GROUND_TRUTH.exists():
+        raise SystemExit(
+            f"{GROUND_TRUTH} is missing -- run `python backend/eval/make_documents.py` first; "
+            "the golden set keys on the documents it writes."
+        )
+    data = json.loads(GROUND_TRUTH.read_text(encoding="utf-8"))
+    return {d["institution"]: d["file"] for d in data["documents"]}
 
 #: How each institution reports, and therefore what the mapper has to recognise.
 #: This mirrors `make_documents.py` exactly -- one institution per format, each using
@@ -144,6 +174,7 @@ def build() -> list[dict]:
         by_institution.setdefault(r["institution_name"], []).append(r)
 
     gold: list[dict] = []
+    files = generated_files()
     n = 0
     for institution in sorted(by_institution):
         style = REPORTING_STYLE.get(institution)
@@ -174,7 +205,11 @@ def build() -> list[dict]:
                 {
                     "gold_id": f"G{n:03d}",
                     "institution_name": institution,
-                    "source_file": record["source_file"],
+                    # The document the pipeline actually ingests. ps06's own
+                    # source_file is kept beside it as provenance, but it is NOT
+                    # the join key -- see generated_files().
+                    "document_file": files[institution],
+                    "ps06_source_file": record["source_file"],
                     "document_format": style["format"],
                     "product_type": record["product_type"],
                     "source_label": style["labels"][field],

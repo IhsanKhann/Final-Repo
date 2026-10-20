@@ -26,7 +26,7 @@ def _row(gold_id: str, *, confirmed: bool, conversion: str = "none", **overrides
     data = dict(
         gold_id=gold_id,
         institution_name="an institution",
-        source_file=f"{gold_id.lower()}.pdf",
+        document_file=f"{gold_id.lower()}.pdf",
         document_format="pdf_text",
         product_type="a product",
         source_label="a label",
@@ -46,7 +46,7 @@ def _mapping(row: GoldenRow, *, field: str | None = None, value: str | None = No
              unit: str | None = None) -> Mapping:
     return Mapping(
         id=f"m-{row.gold_id}",
-        document_id=row.source_file,
+        document_id=row.document_file,
         source_label=row.source_label,
         target_field=field if field is not None else row.expected_field,
         raw_value=row.value_as_printed,
@@ -220,7 +220,7 @@ def test_money_printed_with_a_currency_sign_is_the_same_value():
 def test_a_golden_row_with_an_unexpected_column_is_refused_rather_than_ignored():
     with pytest.raises(Exception):
         GoldenRow(
-            gold_id="G001", institution_name="x", source_file="x.pdf", document_format="pdf_text",
+            gold_id="G001", institution_name="x", document_file="x.pdf", document_format="pdf_text",
             product_type="p", source_label="l", value_as_printed="1", expected_field="f",
             expected_value="1", expected_unit="u", conversion_expected="none",
             difficulty="d", confirmed_by="", a_column_nobody_declared="surprise",

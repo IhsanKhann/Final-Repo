@@ -1,5 +1,5 @@
 import React from 'react';
-import type { MappingStatus } from '../api/types';
+import type { MappingStatus } from '../../api/types';
 import {
   CheckCircle2, AlertCircle, XCircle, CircleCheck, Loader2,
 } from 'lucide-react';

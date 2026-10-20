@@ -112,6 +112,25 @@ class Repository(ABC):
         """
 
 
+    # -- metering --------------------------------------------------------------
+
+    @abstractmethod
+    def documents_this_month(
+        self, *, tenant_id: str = DEFAULT_TENANT, month: str | None = None
+    ) -> int:
+        """How many documents this tenant has had ingested in `month` (UTC "YYYY-MM").
+
+        Documents, not pages, and the name says so. `AdapterResult.page_count` is set by
+        the two PDF adapters and left `None` by csv, sheet, html and narrative, so summing
+        pages would meter four of the six formats at zero -- and an uncounted document is
+        indistinguishable from a free one. Page-granular metering needs those adapters to
+        define what a page of a workbook or a web page is first; until then this counts the
+        unit that every format actually has.
+
+        Per tenant, like every other query here, so a shared deployment cannot bill one
+        customer for another's run.
+        """
+
     # -- events ----------------------------------------------------------------
 
     @abstractmethod
@@ -311,6 +330,24 @@ class SqliteRepository(Repository):
                 (tenant_id, batch_id),
             ).fetchall()
         return self._decode_all(Document, rows)
+
+    # -- metering --------------------------------------------------------------
+
+    def documents_this_month(
+        self, *, tenant_id: str = DEFAULT_TENANT, month: str | None = None
+    ) -> int:
+        """Counted with SQL rather than by decoding bodies: this runs on every upload.
+
+        `created_at` is an ISO-8601 UTC stamp, so a month is a prefix. A row whose stamp is
+        absent or malformed is not counted -- it cannot be attributed to a month, and
+        guessing which one would meter a tenant for a row nobody can place.
+        """
+        with closing(self._connect()) as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) AS n FROM documents WHERE tenant_id=? AND created_at LIKE ?",
+                (tenant_id, f"{month or _now()[:7]}%"),
+            ).fetchone()
+        return int(row["n"])
 
     # -- mappings --------------------------------------------------------------
 

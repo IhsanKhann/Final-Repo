@@ -1,0 +1,767 @@
+# =============================================================================
+# DRAFT — PENDING HUMAN ACCEPTANCE. NOT YET A CUSTOMER PACK.
+#
+# This is the SECOND domain pack. It exists to turn "the engine is domain-agnostic"
+# from a claim enforced by a test into a claim demonstrated by a running second
+# domain: a different industry, a different vocabulary, different units, different
+# arithmetic — and not one line of code changed to load it. If anything in this file
+# required an engine edit, the engine was never domain-agnostic and Law II was
+# decoration.
+#
+# Every declaration here was DRAFTED by an AI agent and is therefore born
+# `status: PROPOSED`. Nothing takes effect until a named human accepts it
+# (`status: ACCEPTED` plus `accepted_by` and `accepted_at` — the loader refuses an
+# ACCEPTED declaration with no human attached). The pack as a whole is PROPOSED for
+# the same reason: nobody has read it yet.
+#
+# THERE IS NOT ONE `QUOTED` DECLARATION IN THIS FILE, AND THAT IS DELIBERATE.
+# QUOTED means "this rule is written in the customer's own source document", and its
+# mandatory fields are doc_id, page and a verbatim quote that the loader opens the
+# file and checks. No customer disclosure document exists in this repo — the
+# inventory we measured against lists 200 filenames and no document bodies — so
+# there is nothing to quote and no page to cite. Writing a doc_id and a page number
+# here would be a fabrication, and Law III exists to forbid exactly that. When the
+# customer's reporting policy and their published disclosures arrive, the field and
+# conversion declarations below are re-tagged QUOTED against them, one at a time, by
+# the human who reads them.
+#
+# So only two tags appear:
+#   MEASURED  — a census over the customer's own data. Every `occurrences` number
+#               below was counted for real against
+#               data/samples/ps01_documents_metadata.csv, and `pattern` is re-run by
+#               backend/engine/packs.py on every load check. If the data changes and
+#               the count no longer reproduces, CI goes red.
+#   AUTHORED  — a judgement call, with a `because` a reviewer can argue with.
+#
+# WHY ALMOST EVERYTHING IS AUTHORED, STATED PLAINLY.
+# `ps01_documents_metadata.csv` is a document INVENTORY: doc_id, filename, arrival
+# channel, date, type, size, a templated OCR snippet, a routing status. It contains
+# no emissions figure, no energy figure, no intensity, no unit string and no column
+# heading from any real disclosure. So there is nothing in it to take a census of
+# about what this domain REPORTS. Every field, every conversion factor and every
+# threshold below is therefore the customer's reporting judgement, labelled as
+# judgement. The four MEASURED declarations are the only four claims this data can
+# actually back, and all four are about the shape of the document population rather
+# than the content of a disclosure. Calling any field declaration MEASURED here
+# would be a census over data that does not exist.
+#
+# This file is data. No code, no prompts, no model configuration belongs in it.
+# =============================================================================
+
+id: esg_emissions
+name: Sustainability Disclosure - Emissions and Energy
+version: 0.1.0
+description: >-
+  Greenhouse-gas and energy disclosure fields, drafted as the second domain pack:
+  a different industry on the same engine with no code change. Field declarations
+  are the reporting judgement of whoever accepts this pack; the census declarations
+  are counted against data/samples/ps01_documents_metadata.csv.
+status: PROPOSED
+updated_at: "2026-10-20T00:00:00Z"
+
+# The dataset every MEASURED declaration below was counted against, repo-root relative.
+# A MEASURED declaration may name its own `dataset`; otherwise it inherits this one.
+measured_against: data/samples/ps01_documents_metadata.csv
+
+# -----------------------------------------------------------------------------
+# 1. FIELDS — the canonical names every source label must land on.
+#
+# Read what is ABSENT from the synonym lists, because that is where the work is.
+# The bare label "Scope 2" appears under neither Scope 2 field. The bare label
+# "Indirect Emissions" appears under neither Scope 2 nor Scope 3. A bare "tons"
+# heading appears nowhere. Each of those is a heading a reporter really writes and
+# none of them identifies a quantity, so each is declared as an ambiguity below
+# instead of being quietly attached to whichever field looked closest. A synonym
+# list is a set of promises; a label that nobody can keep a promise about belongs in
+# section 5, not here.
+# -----------------------------------------------------------------------------
+fields:
+  - name: scope_1_emissions_tco2e
+    label: Scope 1 Emissions (tCO2e)
+    type: number
+    unit: tonnes_co2e
+    required: true
+    synonyms:
+      - scope_1
+      - Scope 1
+      - Scope 1 Emissions
+      - Scope 1 GHG Emissions
+      - Direct Emissions
+      - Direct GHG Emissions
+      - Combustion Emissions
+      - Scope 1 (kt CO2e)
+      - Scope 1 (short tons)
+    # Two of the synonyms above do NOT arrive in the canonical unit. Declaring the
+    # arriving unit on the LABEL is what makes the conversion fire deterministically,
+    # instead of a model inferring a factor from the words "kt" or "short tons".
+    synonym_units:
+      Scope 1 (kt CO2e): kilotonnes_co2e
+      Scope 1 (short tons): short_tons_co2e
+    range:
+      min: 0.0
+      max: 1000000000.0
+    status: PROPOSED
+    provenance:
+      tag: AUTHORED
+      because: >-
+        Emissions the reporter causes directly are declared as their own reportable
+        field, separate from purchased energy and from the value chain, because they
+        are the only one of the three an operator can change by changing their own
+        equipment. Declared required: a disclosure that reports no direct emissions at
+        all is either incomplete or claims a boundary so narrow that a reviewer should
+        see it. A reviewer who believes their reporting entity legitimately has no
+        direct emissions should argue this down to not-required rather than let the
+        field be filled with a zero nobody measured.
+
+  - name: scope_2_emissions_location_based_tco2e
+    label: Scope 2 Emissions, Location-Based (tCO2e)
+    type: number
+    unit: tonnes_co2e
+    required: false
+    synonyms:
+      - scope_2_location
+      - Scope 2 Location-Based
+      - Scope 2 (location-based)
+      - Location-Based Scope 2
+      - Location-Based Scope 2 Emissions
+      - Grid-Average Electricity Emissions
+    range:
+      min: 0.0
+      max: 1000000000.0
+    status: PROPOSED
+    provenance:
+      tag: AUTHORED
+      because: >-
+        Purchased electricity is reported twice under the prevailing standard, once
+        against the average emissions of the grid the reporter draws from and once
+        against the contracts they actually hold, and the two numbers differ by as much
+        as the entire figure. They are therefore two fields and not one field with a
+        qualifier, because a single column that silently holds either is not a column
+        anyone can total. Declared not-required because a reporter who holds no
+        contractual instruments may legitimately publish only one of the two.
+
+  - name: scope_2_emissions_market_based_tco2e
+    label: Scope 2 Emissions, Market-Based (tCO2e)
+    type: number
+    unit: tonnes_co2e
+    required: false
+    synonyms:
+      - scope_2_market
+      - Scope 2 Market-Based
+      - Scope 2 (market-based)
+      - Market-Based Scope 2
+      - Market-Based Scope 2 Emissions
+      - Contractual Electricity Emissions
+      - Scope 2 Market-Based (kt CO2e)
+    synonym_units:
+      Scope 2 Market-Based (kt CO2e): kilotonnes_co2e
+    range:
+      min: 0.0
+      max: 1000000000.0
+    status: PROPOSED
+    provenance:
+      tag: AUTHORED
+      because: >-
+        The contractual counterpart of the location-based field, declared separately
+        for the same reason and under its own name so that the output column says which
+        basis it holds. The asymmetry with the field above is deliberate and arguable:
+        a reviewer who reports on only one basis will want one field and a basis
+        attribute instead, which is a cheaper schema and a worse audit trail.
+
+  - name: scope_3_emissions_tco2e
+    label: Scope 3 Emissions (tCO2e)
+    type: number
+    unit: tonnes_co2e
+    required: false
+    synonyms:
+      - scope_3
+      - Scope 3
+      - Scope 3 Emissions
+      - Scope 3 GHG Emissions
+      - Value Chain Emissions
+      - Scope 3 (Mt CO2e)
+    synonym_units:
+      Scope 3 (Mt CO2e): megatonnes_co2e
+    range:
+      min: 0.0
+      max: 1000000000.0
+    status: PROPOSED
+    provenance:
+      tag: AUTHORED
+      because: >-
+        Value-chain emissions are declared as one field even though the standard splits
+        them across fifteen upstream and downstream categories, because almost every
+        reporter publishes a single headline total and a reviewer needs somewhere to put
+        it. The cost of that choice is that two reporters' totals may cover different
+        subsets of the categories and are not comparable, which is why the coverage
+        ambiguity in section 5 exists rather than being waved away here. A reviewer who
+        needs comparability should reject this and declare the fifteen categories as
+        fifteen fields.
+
+  - name: emissions_intensity_tco2e_per_musd_revenue
+    label: Emissions Intensity (tCO2e per $M revenue)
+    type: number
+    unit: tonnes_co2e_per_million_usd_revenue
+    required: false
+    synonyms:
+      - emissions_intensity
+      - Emissions Intensity
+      - GHG Intensity
+      - Carbon Intensity
+      - Intensity (tCO2e/$M revenue)
+      - Intensity (kgCO2e/$ revenue)
+    # The intensity case is where this domain's unit problem gets genuinely nasty: the
+    # numerator and the denominator each have their own unit, and reporters vary both.
+    synonym_units:
+      Intensity (kgCO2e/$ revenue): kilograms_co2e_per_usd_revenue
+    range:
+      min: 0.0
+      max: 100000.0
+    status: PROPOSED
+    provenance:
+      tag: AUTHORED
+      because: >-
+        An intensity is declared as a reportable field in its own right rather than
+        computed by us from an emissions figure and a revenue figure, because the
+        reporter's denominator is their own choice - which revenue, at which exchange
+        rate, over which consolidation - and recomputing it would substitute our
+        denominator for theirs. The declared canonical form fixes only the units, not
+        the denominator's definition. A reviewer who wants the intensity derived rather
+        than read should say so, and should expect the derived number to disagree with
+        the published one.
+
+  - name: renewable_electricity_share_pct
+    label: Renewable Electricity Share (%)
+    type: number
+    unit: percent
+    required: false
+    synonyms:
+      - renewable_electricity_share
+      - Renewable Electricity
+      - Renewable Electricity (%)
+      - Renewable Energy Share
+      - Share of Renewable Electricity
+      - Renewable Electricity (fraction)
+    synonym_units:
+      Renewable Electricity (fraction): fraction_of_one
+    range:
+      min: 0.0
+      max: 100.0
+    status: PROPOSED
+    provenance:
+      tag: AUTHORED
+      because: >-
+        A share is declared in percent and not as a fraction because that is how it is
+        published and read, and because the two forms are a factor of 100 apart with no
+        way to tell them apart from the number alone: 0.42 is a plausible percentage and
+        42 is a plausible percentage, so a pipeline that guesses from magnitude will be
+        wrong on the quiet half of the data. Declaring the arriving unit on the label is
+        the only honest fix, which is why the fraction heading is listed in
+        synonym_units above rather than left to a heuristic.
+
+  - name: total_energy_consumption_mwh
+    label: Total Energy Consumption (MWh)
+    type: number
+    unit: megawatt_hours
+    required: false
+    synonyms:
+      - total_energy_consumption
+      - Total Energy Consumption
+      - Total Energy Use (MWh)
+      - Energy Use
+      - Energy Consumption (GJ)
+      - Energy Consumption (TJ)
+    synonym_units:
+      Energy Consumption (GJ): gigajoules
+      Energy Consumption (TJ): terajoules
+    range:
+      min: 0.0
+      max: 1000000000.0
+    status: PROPOSED
+    provenance:
+      tag: AUTHORED
+      because: >-
+        Energy is declared in megawatt-hours because that is the unit an electricity
+        bill and a grid operator use, and because the joule-family headings that
+        competing reporters use differ from it by factors of 3.6 and 3600 - close enough
+        to a plausible number that an unconverted figure does not look wrong. The choice
+        of MWh over GJ as canonical is arguable and a reviewer who files to an
+        energy-regulator schema in GJ should invert it; what is not arguable is that one
+        of the two has to be declared.
+
+  - name: reporting_period_end
+    label: Reporting Period End
+    type: date
+    unit: null
+    required: true
+    synonyms:
+      - reporting_period_end
+      - Period End
+      - Reporting Period Ended
+      - FY End
+      - Fiscal Year End
+      - Reporting Year End
+    range: null
+    status: PROPOSED
+    provenance:
+      tag: AUTHORED
+      because: >-
+        Declared required because an emissions figure with no period attached cannot be
+        compared with anything, not even with itself a year later, and because the
+        restatement rules in sections 3 and 4 have nothing to key on without it. The END
+        of the period is declared rather than the fiscal-year label, because labels like
+        "FY24" mean different twelve months in different jurisdictions and a date does
+        not.
+
+# -----------------------------------------------------------------------------
+# 2. CONVERSIONS — the factors the customer declares. The engine owns no arithmetic
+#    constant of its own; editing a factor here changes the output column.
+#
+#    This is the section that proves the point of a second pack. Not one of these
+#    seven factors is 1.0, and not one of them exists anywhere in the engine. The
+#    first pack declares a single factor of 12. This one spans six orders of
+#    magnitude, from 0.278 to 1,000,000, on the same converter.
+# -----------------------------------------------------------------------------
+conversions:
+  - id: kt_co2e_to_t_co2e
+    from: kilotonnes_co2e
+    to: tonnes_co2e
+    factor: 1000.0
+    formula_text: x 1,000 (kilotonnes -> tonnes)
+    status: PROPOSED
+    provenance:
+      tag: AUTHORED
+      because: >-
+        A kilotonne is a thousand tonnes by definition of the prefix, so the factor
+        itself is not the judgement. The judgement is that a heading saying "kt" is
+        taken at its word rather than inferred from the size of the number, because a
+        large reporter's tonnes and a small reporter's kilotonnes occupy the same range
+        of digits and magnitude cannot tell them apart. The cost of this declaration is
+        that a mislabelled heading converts confidently in the wrong direction, which is
+        what the magnitude guard in section 5 is there to catch.
+
+  - id: mt_co2e_to_t_co2e
+    from: megatonnes_co2e
+    to: tonnes_co2e
+    factor: 1000000.0
+    formula_text: x 1,000,000 (megatonnes -> tonnes)
+    status: PROPOSED
+    provenance:
+      tag: AUTHORED
+      because: >-
+        As above, one prefix further out, and declared separately rather than composed
+        from the kilotonne factor because a conversion table a reviewer can read is
+        worth more than one that is clever. Megatonnes appear almost exclusively on
+        value-chain totals, where the number is largest and an unconverted figure is
+        wrong by six orders of magnitude - the single most expensive error available in
+        this domain.
+
+  - id: short_tons_co2e_to_t_co2e
+    from: short_tons_co2e
+    to: tonnes_co2e
+    factor: 0.90718474
+    formula_text: x 0.90718474 (US short tons -> metric tonnes)
+    status: PROPOSED
+    provenance:
+      tag: AUTHORED
+      because: >-
+        A US short ton is 907.18474 kilograms exactly, so this factor is exact and not
+        rounded. What is a judgement is that it applies only to a heading that SAYS
+        short tons: this pack deliberately declares no factor for an unqualified "tons"
+        heading, because a short ton and a long ton are nine percent apart and the word
+        alone does not say which. That omission is a declaration too, and the ambiguity
+        in section 5 is where an unqualified heading goes instead.
+
+  - id: kg_per_usd_to_t_per_musd
+    from: kilograms_co2e_per_usd_revenue
+    to: tonnes_co2e_per_million_usd_revenue
+    factor: 1000.0
+    formula_text: x 1,000 (kg CO2e per $ -> tonnes CO2e per $M, from 1/1,000 x 1,000,000)
+    status: PROPOSED
+    provenance:
+      tag: AUTHORED
+      because: >-
+        Two conversions in one, because an intensity has two units: the numerator is
+        divided by a thousand to go from kilograms to tonnes, and the denominator is
+        multiplied by a million to go from dollars to millions of dollars, which
+        together give a thousand. It is declared as one factor rather than two because
+        the pair is what arrives under one heading, but a reviewer should notice that
+        this is the one factor in the file where the arithmetic is not visible in the
+        prefix, and should check it rather than trust it.
+
+  - id: fraction_to_percent
+    from: fraction_of_one
+    to: percent
+    factor: 100.0
+    formula_text: x 100 (fraction of one -> percent)
+    status: PROPOSED
+    provenance:
+      tag: AUTHORED
+      because: >-
+        The least interesting factor in the file and the one most likely to be applied
+        twice or not at all, because its input and its output are both bare numbers with
+        no unit visible in the value. It fires only where a heading declares the
+        fraction form in synonym_units; it is never inferred from a value being below
+        one, because a reporter with a genuinely tiny renewable share publishes 0.4
+        percent and would have it multiplied into 40.
+
+  - id: gj_to_mwh
+    from: gigajoules
+    to: megawatt_hours
+    factor: 0.2777777777777778
+    formula_text: x 1/3.6 (GJ -> MWh, since 1 MWh = 3.6 GJ)
+    status: PROPOSED
+    provenance:
+      tag: AUTHORED
+      because: >-
+        One megawatt-hour is 3.6 gigajoules exactly, so the exact factor is the
+        recurring decimal 1/3.6 and the number declared here is that decimal truncated
+        to the precision a float carries. The judgement is to declare the division as a
+        multiplication by a truncated reciprocal rather than to add a divide form to the
+        table: it keeps the converter a single lookup and a single multiply, at the cost
+        of a rounding error in the fifteenth significant figure. A reviewer reporting to
+        a regulator that specifies exact arithmetic should reject this and ask for a
+        rational factor.
+
+  - id: tj_to_mwh
+    from: terajoules
+    to: megawatt_hours
+    factor: 277.77777777777777
+    formula_text: x 1,000/3.6 (TJ -> MWh, since 1 MWh = 0.0036 TJ)
+    status: PROPOSED
+    provenance:
+      tag: AUTHORED
+      because: >-
+        The gigajoule factor times a thousand, declared in its own right for the same
+        reason as the megatonne factor: a table of seven readable rows beats a table of
+        five rows and two compositions a reviewer has to do in their head. Terajoules
+        are what large industrial reporters use, so this is the row that fires on the
+        biggest energy numbers in the batch.
+
+# -----------------------------------------------------------------------------
+# 3. PRECEDENCE — which of the customer's own statements governs when two disagree.
+#
+#    READ THIS: an AUTHORED precedence rule is us deciding something that is not ours
+#    to decide. Both entries below therefore RESOLVE NOTHING. They route the conflict
+#    to a human with both provenances attached, and they stay PROPOSED until the
+#    customer accepts or replaces them. In this domain the temptation is unusually
+#    strong - "the later report wins" is almost always right - and that is exactly why
+#    it is refused.
+# -----------------------------------------------------------------------------
+precedence:
+  - id: restated_prior_year_figure
+    name: A later report restates a prior-year figure
+    field: null
+    condition: >-
+      two values for the same field and the same reporting_period_end, one from the
+      report published for that period and one from a later report restating it, that
+      are not equal
+    action: flag
+    description: >-
+      Show both, with both source locations and both publication dates, and let a human
+      choose which one the output carries. Nothing is auto-accepted.
+    status: PROPOSED
+    provenance:
+      tag: AUTHORED
+      because: >-
+        We are deliberately NOT declaring "the restatement wins". A restatement is
+        usually a correction and sometimes a change of methodology or boundary, and the
+        two need opposite treatment: a correction should replace the original, while a
+        methodology change makes the two figures incomparable and replacing one with the
+        other destroys the trend the reader came for. Only the customer knows which
+        happened, and in many cases only the restating company's own footnote says. A
+        dataset that silently absorbs restatements also silently rewrites its own
+        history, so the honest behaviour is to surface both and let a human say.
+
+  - id: assured_figure_against_the_same_figure_elsewhere
+    name: An assured figure disagrees with the same figure elsewhere in the document
+    field: null
+    condition: >-
+      the same field appears twice in one document with different values, one inside a
+      section the document marks as independently assured and one outside it
+    action: warn
+    description: >-
+      Keep both, warn, and record which section each came from. The reviewer decides
+      whether the assured figure governs.
+    status: PROPOSED
+    provenance:
+      tag: AUTHORED
+      because: >-
+        "The assured number wins" is the obvious guess and it is still a guess. Assurance
+        is usually limited rather than reasonable, often covers only some fields, and is
+        performed as at a date - so a figure outside the assured section may simply be
+        more recent, or may be the same figure at a finer granularity rather than a
+        contradiction. Declaring the assured figure authoritative would also mean we had
+        read and interpreted an assurance scope statement, which is a legal document and
+        not ours to interpret.
+
+# -----------------------------------------------------------------------------
+# 4. MATERIALITY — how large a discrepancy has to be before it is worth a human's time.
+# -----------------------------------------------------------------------------
+materiality:
+  - id: emissions_rounding_tolerance
+    name: Emissions rounding tolerance
+    field: scope_1_emissions_tco2e
+    condition: abs(converted_value - stated_value) > 0.5
+    threshold: 0.5
+    action: flag
+    description: >-
+      A difference at or below half a tonne is rounding noise against a figure published
+      in whole tonnes and is not raised. Anything larger is flagged.
+    status: PROPOSED
+    provenance:
+      tag: AUTHORED
+      because: >-
+        Emissions are published in whole tonnes, so half a tonne is the largest
+        difference that rounding alone can explain. The weakness a reviewer should attack
+        is this: the tolerance is stated in the CANONICAL unit, but a figure published as
+        12.3 kt carries fifty tonnes of its own rounding before our converter touches it,
+        so this flat threshold will raise conversions that are in fact exact to the
+        source's published precision. The honest alternative is a tolerance that scales
+        with the arriving unit's last published place. We state the flat number because
+        it is checkable today and because stating nothing would mean flagging every
+        conversion; the scaling rule is the customer's to declare.
+
+  - id: restatement_materiality
+    name: A restatement large enough to matter
+    field: null
+    condition: abs(restated_value - originally_published_value) / originally_published_value > 0.05
+    threshold: 0.05
+    action: flag
+    description: >-
+      A restatement that moves a figure by more than five percent is raised for a human
+      regardless of confidence. Smaller restatements are recorded but not raised.
+    status: PROPOSED
+    provenance:
+      tag: AUTHORED
+      because: >-
+        Five percent is a stated threshold, not a measured one, and a reviewer should
+        argue with the number rather than accept it. The reasoning behind it: below a few
+        percent a restatement is usually a refinement of an estimate and raising it buries
+        the reviewer, while above it the restated figure tends to reflect a change of
+        boundary or method that the output must not absorb silently. A reporter whose
+        figures are small enough that five percent is a rounding artefact needs a tighter
+        number, and one reporting at national scale may need a looser one. It is data here
+        and not a constant in the engine precisely so that it can be changed by the person
+        who is accountable for it.
+
+# -----------------------------------------------------------------------------
+# 5. AMBIGUITY — what we do when we are not sure. Three lanes, never two: the
+#    interesting case is always the middle one.
+#
+#    The first four entries are this domain's real terminology problem, and all four
+#    produce review rather than a mapping. The last four are MEASURED against the
+#    customer's document inventory, which is the only thing in that file there is
+#    anything to count.
+# -----------------------------------------------------------------------------
+ambiguity:
+  - id: scope_2_basis_unstated
+    name: A purchased-electricity figure that does not say on which basis
+    field: null
+    condition: >-
+      a source label names the purchased-electricity scope without stating whether the
+      figure is market-based or location-based
+    action: flag
+    description: >-
+      Route the figure to review with both declared basis fields attached as candidates.
+      It is never written to either one by guesswork, and it is never silently dropped.
+    status: PROPOSED
+    provenance:
+      tag: AUTHORED
+      because: >-
+        This is why the bare label is a synonym of neither field above. The same
+        electricity produces two legitimate numbers under the prevailing standard and
+        they can differ by the whole of the figure, so choosing one is choosing the
+        customer's reporting basis for them - the one thing this product exists to
+        refuse. The temptation to resolve it is real, because a reporter who publishes
+        only one number usually means location-based, and "usually" is not a rule we are
+        entitled to apply to someone else's disclosure.
+
+  - id: indirect_emissions_names_no_scope
+    name: An indirect-emissions heading that names no scope
+    field: null
+    condition: >-
+      a source label says the emissions are indirect without naming which indirect scope
+      it means
+    action: flag
+    description: >-
+      Route to review with the purchased-electricity and value-chain fields attached as
+      candidates. The word "indirect" alone identifies no field.
+    status: PROPOSED
+    provenance:
+      tag: AUTHORED
+      because: >-
+        Both of the non-direct scopes are literally indirect emissions, so the word is
+        shared by two fields whose values differ by one or two orders of magnitude for a
+        typical reporter. A pipeline that resolves it to the purchased-electricity field
+        because that heading is more common would be right most of the time and
+        catastrophically wrong on the rest, and the error is invisible in the output: both
+        candidates are plausible numbers in a plausible column.
+
+  - id: unqualified_tons_heading
+    name: A figure in "tons" with no system named
+    field: null
+    condition: >-
+      a source label or value carries a mass unit that says tons without saying which
+      kind of ton
+    action: flag
+    description: >-
+      Route to review. This pack declares a factor for short tons and for metric tonnes
+      and deliberately declares none for an unqualified ton, so no conversion can fire.
+    status: PROPOSED
+    provenance:
+      tag: AUTHORED
+      because: >-
+        A short ton is 0.907 metric tonnes, a long ton is 1.016, and the two are nine
+        percent apart - comfortably large enough to change a reported trend and
+        comfortably small enough that neither number looks wrong. US filers usually mean
+        short and legacy UK filers usually mean long, and "usually" applied to a unit is
+        how a 9% error enters a dataset and never leaves. The absence of a factor in
+        section 2 is the declaration; this entry is what happens because of it.
+
+  - id: reporting_boundary_unstated
+    name: A figure with no organisational boundary stated
+    field: null
+    condition: >-
+      a figure arrives with no stated consolidation boundary for the reporting entity
+    action: flag
+    description: >-
+      Route to review with the boundary question attached to the cell. The figure is
+      shown as unresolved, never written to the output with an assumed boundary.
+    status: PROPOSED
+    provenance:
+      tag: AUTHORED
+      because: >-
+        The same operations produce materially different totals under an equity-share
+        boundary, a financial-control boundary and an operational-control boundary,
+        because each one includes a different set of joint ventures and leased assets. The
+        boundary is a property of the reporter's whole inventory rather than of the number
+        on the page, so it is frequently stated once in a methodology note and nowhere
+        near the figure - which means a pipeline reading the figure alone cannot know it,
+        and the honest response to not knowing is to say so.
+
+  - id: scope_3_category_coverage_unstated
+    name: A value-chain total over an unstated set of categories
+    field: scope_3_emissions_tco2e
+    condition: >-
+      a value-chain total arrives without the set of standard categories it covers
+    action: warn
+    description: >-
+      Record the total with the coverage marked unknown and warn. It is not compared
+      against another reporter's total until a human confirms the coverage matches.
+    status: PROPOSED
+    provenance:
+      tag: AUTHORED
+      because: >-
+        The standard splits value-chain emissions across fifteen upstream and downstream
+        categories and lets a reporter omit the ones they judge immaterial, so two
+        headline totals can differ by a factor of ten while both being correct. This is a
+        warn rather than a flag because the total is still the right value for the field -
+        it is only comparison across reporters that is unsafe - and a reviewer who is
+        building a league table will reasonably argue this should be a flag.
+
+  - id: no_arriving_unit_may_be_inferred_from_magnitude
+    name: A conversion that moves the value too far
+    field: null
+    condition: abs(log10(converted_value / raw_value)) > 9
+    threshold: 1000000000.0
+    action: flag
+    description: >-
+      A conversion that moves a value by more than nine orders of magnitude goes to
+      review regardless of confidence.
+    status: PROPOSED
+    provenance:
+      tag: AUTHORED
+      because: >-
+        NOTE THE NUMBER, because it is the clearest evidence in this repo that a guard
+        like this is pack data and not engine code: the first pack sets this at three
+        orders of magnitude, which is correct there because its only declared factor is
+        12, and which would mis-fire on every megatonne conversion here. The largest
+        factor this pack declares is a million, so a jump beyond nine orders cannot be any
+        declared conversion and is far likelier to be a unit declared wrongly - kilograms
+        read as tonnes, a fraction read as a percentage - than a real number. Confidence
+        cannot catch this, because a model can be entirely confident about a value whose
+        unit it has misread; only the size of the jump catches it.
+
+  - id: terminology_variance_across_arrival_channels
+    name: One quantity, many headings
+    field: null
+    condition: a source label matches no declared synonym of any field
+    action: flag
+    description: >-
+      Route the label to review with the candidate fields attached. A label the pack does
+      not declare is never mapped to a field by guesswork.
+    status: PROPOSED
+    provenance:
+      tag: MEASURED
+      occurrences: 5
+      pattern: count(distinct source)
+      note: >-
+        Five distinct arrival channels appear across the 200-document inventory. A channel
+        is a different upstream publishing pipeline, not a different folder, so the
+        headings arriving through them are not drawn from one house style and the synonym
+        lists above are necessarily incomplete. They will meet a word they do not contain,
+        and the honest response to an unknown heading is the review lane rather than the
+        nearest match.
+
+  - id: no_text_layer_can_be_assumed
+    name: Every document arrives as one opaque format
+    field: null
+    condition: a document arrives with no machine-readable text layer
+    action: warn
+    description: >-
+      Route the document to the scanned path and record which pages yielded no text. A
+      page that yields nothing is reported as unread, never as empty.
+    status: PROPOSED
+    provenance:
+      tag: MEASURED
+      occurrences: 200
+      pattern: count(rows where file_type == PDF)
+      note: >-
+        All 200 rows in the inventory carry the same file type, so there is no format
+        variety in the arrival channels to fall back on: this customer's disclosures are
+        PDFs or they are nothing. A pipeline here cannot assume a text layer exists, and
+        the difference between "this page says zero" and "this page could not be read" is
+        the difference between a reported figure and a fabricated one.
+
+  - id: upstream_status_carries_no_information
+    name: An upstream status is evidence, never a label
+    field: null
+    condition: a document arrives carrying an upstream processing status
+    action: warn
+    description: >-
+      Record the upstream status as evidence on the document and let our own stages decide
+      independently. Never adopt it as ground truth and never branch on it.
+    status: PROPOSED
+    provenance:
+      tag: MEASURED
+      occurrences: 1
+      pattern: count(distinct current_status)
+      note: >-
+        Exactly ONE distinct value of that column exists across all 200 rows, so the
+        upstream status carries no information whatsoever and a pipeline that branched on
+        it would be branching on a constant. The sibling routing column in the same file
+        belongs to a different problem statement entirely and is not a field of this
+        domain, which is why neither column appears anywhere in section 1.
+
+  - id: most_documents_exceed_a_single_pass
+    name: Most documents are too large for one pass
+    field: null
+    condition: file_size_kb > 2000
+    threshold: 2000.0
+    action: warn
+    description: >-
+      Warn and route the document to the paged extraction path. A document extracted in
+      one pass that hit a budget ceiling must be reported as partially read, not as
+      complete.
+    status: PROPOSED
+    provenance:
+      tag: MEASURED
+      occurrences: 113
+      pattern: count(rows where file_size_kb > 2000)
+      note: >-
+        113 of the 200 documents are above two megabytes, so the large-document path is
+        the MAJORITY case in this customer's population rather than an edge case. Sizes run
+        from 59 kB to 4,943 kB. The two-megabyte line is where this inventory's own
+        distribution says a single-pass budget stops being plausible; it is a property of
+        this customer's documents and must be re-counted for another customer's.

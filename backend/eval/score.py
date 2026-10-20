@@ -14,12 +14,15 @@ Two decisions worth knowing before you read a number this produces:
   * A confirmed row the pipeline produced NO mapping for counts as WRONG, not as absent.
     The denominator is confirmed rows, never matched rows. Scoring only what we managed to
     emit would make accuracy rise every time coverage fell, which is exactly backwards.
-  * Matching a mapping to a golden row needs more than (document, source_label) whenever
-    one document reports the same label on several product rows -- a rate sheet does. Until
-    the adapters qualify `source_label` per row, `match_key` is injectable and `unmatched`
-    is reported rather than hidden. See the note on MatchKey.
+  * (document, source_label) is NOT a key. Measured on the real run, one document and one
+    heading identify up to 30 mappings, because every generated document reports all six
+    product types under the same headings. The key therefore carries the value as printed
+    as well, and where even that still names several mappings the match is REFUSED unless
+    they all agree about where the value belongs. See the note on MatchKey.
 
-What this module refuses to do: call a model, and report a number it cannot stand behind.
+What this module refuses to do: call a model; report a number it cannot stand behind; and
+pick one of several mappings a key cannot tell apart. The last is the newest of the three
+and the easiest to get wrong, because guessing there produces a plausible number.
 """
 
 from __future__ import annotations
@@ -77,7 +80,12 @@ class GoldenRow(BaseModel):
 
     gold_id: str
     institution_name: str
-    source_file: str
+    #: The document the pipeline actually ingests, as make_documents.py wrote it. THIS is
+    #: the join key. It is not the same thing as the ps06 filename below, and conflating
+    #: the two scored 0 matches against a working pipeline -- see default_match_key.
+    document_file: str
+    #: ps06's own source_file, kept as provenance only. Never joined on.
+    ps06_source_file: str = ""
     document_format: str
     product_type: str
     source_label: str
@@ -106,7 +114,16 @@ MappingKey = Callable[[Mapping], tuple[str, ...]]
 
 
 def default_match_key(row: GoldenRow) -> tuple[str, ...]:
-    return (row.source_file.casefold(), row.source_label.casefold())
+    """Join on the document the pipeline reads, not the one ps06 was derived from.
+
+    ⚠ The first version used `row.source_file`, which holds names like
+    `first_national_bank_rates_page1.pdf` -- the ORIGINAL rate sheets the sample CSV was
+    built from. Nothing by that name is ever ingested. Every key missed, `matched` came
+    back 0, and accuracy read 0.0 while the pipeline was mapping correctly. A broken join
+    that reports as catastrophic failure is worse than one that raises, so the column it
+    reads is now named for what it is.
+    """
+    return (row.document_file.casefold(), row.source_label.casefold())
 
 
 def default_mapping_key(mapping: Mapping) -> tuple[str, ...]:
