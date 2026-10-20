@@ -4,6 +4,9 @@ fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
 python-dotenv>=1.0.0
 pyyaml>=6.0.2
+# Required by POST /api/batches: the frontend's client.ts posts FormData, so the route
+# takes UploadFile, and FastAPI cannot parse multipart without this.
+python-multipart>=0.0.9
 
 # Adapters (block 4)
 pandas>=2.2.0

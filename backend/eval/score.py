@@ -25,6 +25,7 @@ What this module refuses to do: call a model, and report a number it cannot stan
 from __future__ import annotations
 
 import csv
+from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Callable, Iterable, Sequence
@@ -37,9 +38,32 @@ from backend.engine.units import parse_numeric
 #: Agreed in AGREEMENTS section 6: 30 rows, confirmed by initials in `confirmed_by`.
 MINIMUM_CONFIRMED_ROWS = 30
 
-#: Tolerance for a converted value. Tight on purpose: the x12 case is exact arithmetic on
-#: a decimal, so anything looser would hide a genuine conversion error.
-VALUE_TOLERANCE = Decimal("0.0001")
+#: Tolerance for a converted value, and the reason it is not tighter.
+#:
+#: The x12 case cannot round-trip exactly. The generated monthly quote is printed to four
+#: decimals (that is what a rate sheet prints), so recovering the annual figure multiplies
+#: a rounded number: the error is bounded by 12 x 0.00005 = 0.0006 percentage points. A
+#: tolerance of 0.0001 would therefore fail every single monthly row while the converter
+#: was working perfectly -- which is worse than useless, because the obvious fix for a
+#: red conversion test is to loosen it until it passes and stop looking.
+#:
+#: So this is 0.001: comfortably above the printing bound, and still two orders of
+#: magnitude below the gap between any two distinct values in the data.
+VALUE_TOLERANCE = Decimal("0.001")
+
+#: Date formats the generated documents actually print, per institution. The scorer
+#: compares dates as dates, because "07/01/2026", "01 Jul 2026", "July 1, 2026" and
+#: "2026-07-01" are the same day and a string comparison would score three of them wrong
+#: while the pipeline was right.
+_DATE_FORMATS = (
+    "%Y-%m-%d",
+    "%m/%d/%Y",
+    "%d %b %Y",
+    "%d %B %Y",
+    "%B %d, %Y",
+    "%b %d, %Y",
+    "%Y/%m/%d",
+)
 
 
 def default_golden_set_path() -> Path:
@@ -147,15 +171,39 @@ def confirmed_rows(rows: Iterable[GoldenRow]) -> list[GoldenRow]:
     return [row for row in rows if row.is_confirmed]
 
 
+def _as_date(text: str) -> date | None:
+    candidate = text.strip()
+    if not candidate:
+        return None
+    for pattern in _DATE_FORMATS:
+        try:
+            return datetime.strptime(candidate, pattern).date()
+        except ValueError:
+            continue
+    return None
+
+
 def _values_agree(produced: str | None, expected: str) -> bool:
+    """Compare as numbers if both are numbers, as dates if both are dates, else as text.
+
+    Never as raw strings first: the fixtures deliberately print the same quantity in each
+    institution's own house style, which is the problem the product solves. Scoring that
+    as a mismatch would mark the pipeline wrong for being right.
+    """
     if produced is None:
         return False
+
     left = parse_numeric(produced)
     right = parse_numeric(expected)
-    if left is None or right is None:
-        # Not numeric on at least one side: compare as text, trimmed and case-folded.
-        return produced.strip().casefold() == expected.strip().casefold()
-    return abs(left - right) <= VALUE_TOLERANCE
+    if left is not None and right is not None:
+        return abs(left - right) <= VALUE_TOLERANCE
+
+    left_date = _as_date(produced)
+    right_date = _as_date(expected)
+    if left_date is not None and right_date is not None:
+        return left_date == right_date
+
+    return produced.strip().casefold() == expected.strip().casefold()
 
 
 def score(

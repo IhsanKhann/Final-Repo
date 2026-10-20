@@ -146,6 +146,77 @@ def test_conversion_correctness_is_not_penalised_when_nothing_needed_converting(
     assert result.conversion_correctness == 1.0
 
 
+def test_the_monthly_round_trip_is_scored_correct_within_its_printing_bound():
+    """The x12 case cannot round-trip exactly, and the scorer must not punish that.
+
+    The generator prints the monthly quote to four decimals because that is what a rate
+    sheet prints, so recovering the annual figure multiplies a rounded number and the
+    error is bounded by 12 x 0.00005 = 0.0006 percentage points. A tolerance tighter than
+    that fails every monthly row while the converter is working perfectly -- and the
+    obvious fix for a red conversion test is to loosen it until it passes and stop looking.
+    """
+    rows = [_row("G001", confirmed=True, conversion="x12", expected_value="4.0596")] + [
+        _row(f"G{i:03d}", confirmed=True) for i in range(2, 31)
+    ]
+    # 0.2240 printed, x12 -> 2.688 against a true 4.0596-style figure would be wrong; the
+    # realistic case is a recovery that differs only in the last printed place.
+    produced = [_mapping(rows[0], value="4.0602", unit="u_year")] + [
+        _mapping(r) for r in rows[1:]
+    ]
+    result = score(produced, rows)
+    assert isinstance(result, Score)
+    assert result.conversion_correctness == 1.0, (
+        "a recovery within the printing bound was scored wrong, which would make the "
+        "conversion criterion unpassable by construction"
+    )
+
+
+def test_a_recovery_outside_the_printing_bound_is_still_scored_wrong():
+    """The tolerance must not be so loose that a genuine conversion error passes."""
+    rows = [_row("G001", confirmed=True, conversion="x12", expected_value="4.0596")] + [
+        _row(f"G{i:03d}", confirmed=True) for i in range(2, 31)
+    ]
+    produced = [_mapping(rows[0], value="4.12", unit="u_year")] + [
+        _mapping(r) for r in rows[1:]
+    ]
+    result = score(produced, rows)
+    assert isinstance(result, Score)
+    assert result.conversion_correctness == 0.0
+
+
+@pytest.mark.parametrize(
+    "printed", ["2026-07-01", "07/01/2026", "01 Jul 2026", "July 1, 2026"]
+)
+def test_the_same_day_printed_in_four_house_styles_is_one_value(printed):
+    """Each institution prints dates its own way. That is the problem, not a mismatch."""
+    rows = [
+        _row(
+            "G001",
+            confirmed=True,
+            expected_field="effective_date",
+            expected_value="2026-07-01",
+            expected_unit="",
+        )
+    ] + [_row(f"G{i:03d}", confirmed=True) for i in range(2, 31)]
+    produced = [_mapping(rows[0], value=printed, unit="")] + [_mapping(r) for r in rows[1:]]
+    result = score(produced, rows)
+    assert isinstance(result, Score)
+    assert result.mapping_accuracy == 1.0
+    assert result.outcomes[0].field_correct is True
+
+
+def test_money_printed_with_a_currency_sign_is_the_same_value():
+    rows = [
+        _row("G001", confirmed=True, conversion="usd", expected_value="500", expected_unit="usd")
+    ] + [_row(f"G{i:03d}", confirmed=True) for i in range(2, 31)]
+    produced = [_mapping(rows[0], value="$500", unit="usd")] + [
+        _mapping(r) for r in rows[1:]
+    ]
+    result = score(produced, rows)
+    assert isinstance(result, Score)
+    assert result.conversion_correctness == 1.0
+
+
 def test_a_golden_row_with_an_unexpected_column_is_refused_rather_than_ignored():
     with pytest.raises(Exception):
         GoldenRow(

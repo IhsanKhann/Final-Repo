@@ -348,20 +348,41 @@ def make_store() -> ConfigStore:
 # --- Entry-point-only dotenv loading ------------------------------------------
 
 
-def load_env(path: str | Path | None = None) -> bool:
+def env_candidates() -> list[Path]:
+    """Every place a .env legitimately lives, nearest first.
+
+    Both, because the repo actually has `backend/.env` while the obvious default is
+    `<repo>/.env`. A loader that checked only one would read nothing, every provider would
+    report no-key, and that is indistinguishable from not having a key -- the most
+    expensive kind of silence.
+    """
+    backend_dir = Path(__file__).resolve().parents[1]
+    return [backend_dir / ".env", backend_dir.parent / ".env"]
+
+
+def load_env(path: str | Path | None = None) -> list[Path]:
     """Load .env into os.environ. ONLY entry points may call this.
 
     A library module that loads dotenv on import makes a key's presence depend on import
     order. tests/test_env_is_loaded.py asserts every entry point calls this, because the
     opposite failure is worse and silent: a valid key sits in a file nothing reads and
     every agent reports no-key.
+
+    Returns the files it actually read, so an entry point can log it and a test can prove
+    the loader found something rather than merely ran. `override=False`, so the nearest
+    file wins and an already-exported variable beats both.
     """
     try:
         from dotenv import load_dotenv
     except ImportError:
-        return False
-    target = Path(path) if path else Path(__file__).resolve().parents[2] / ".env"
-    return bool(load_dotenv(target, override=False))
+        return []
+
+    targets = [Path(path)] if path else env_candidates()
+    loaded: list[Path] = []
+    for target in targets:
+        if target.is_file() and load_dotenv(target, override=False):
+            loaded.append(target)
+    return loaded
 
 
 # --- The two resolvers --------------------------------------------------------

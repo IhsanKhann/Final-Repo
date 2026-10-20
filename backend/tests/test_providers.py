@@ -20,7 +20,7 @@ from typing import Any, Mapping, get_args
 
 import pytest
 
-from backend.engine.config import ConfigStore, Source
+from backend.engine.config import SECRETS, ConfigStore, Source
 from backend.engine.contracts import Unavailable
 from backend.intelligence import providers as prov
 from backend.intelligence.base import (
@@ -42,6 +42,18 @@ SCHEMA: dict[str, Any] = {
     "required": ["target_field"],
     "properties": {"target_field": {"type": "string", "enum": ["field_one", "field_two"]}},
 }
+
+
+@pytest.fixture(autouse=True)
+def no_key_anywhere(monkeypatch):
+    """Run every test as if no key had ever been configured, on any machine.
+
+    `secret_for` treats env as a one-time seed, so a key exported in the developer's
+    shell would otherwise be promoted into the store mid-test and the `no-key` assertions
+    below would pass or fail depending on whose laptop ran them.
+    """
+    for env_var in SECRETS.values():
+        monkeypatch.delenv(env_var, raising=False)
 
 
 # --- fakes --------------------------------------------------------------------

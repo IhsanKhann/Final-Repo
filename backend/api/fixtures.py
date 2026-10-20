@@ -136,7 +136,7 @@ def _packs() -> list[SchemaPack]:
             id="shipping-v1",
             name="Shipping",
             version="1.0",
-            description="Freight & logistics rate sheets",
+            description="Freight & logistics tariff tables",
             fields=[
                 SchemaField(
                     name="freight_rate",
@@ -245,7 +245,7 @@ def _batches() -> list[Batch]:
         ),
         Batch(
             id="batch-002",
-            name="October Rate Sheets",
+            name="October Tariff Tables",
             pack_id="shipping-v1",
             pack_name="Shipping v1",
             files=[
@@ -829,7 +829,10 @@ class FixtureService:
         ):
             if mapping.confidence < payload.min_confidence:
                 continue
-            if mapping.status not in OPEN_STATUSES:
+            # `review` only, never `missing`. A missing field has no value to accept, and
+            # min_confidence=0 would otherwise sweep the whole third lane into `approved`
+            # -- which is exactly the silent error the gate exists to prevent.
+            if mapping.status != "review":
                 continue
             after, refusal = self._approve(mapping, "approved")
             if refusal is not None:

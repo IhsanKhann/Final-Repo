@@ -235,7 +235,13 @@ class PipelineService(Protocol):
 
     def bulk_accept(
         self, payload: BulkAcceptPayload, *, tenant_id: str = DEFAULT_TENANT
-    ) -> BulkAcceptResponse | None: ...
+    ) -> BulkAcceptResponse | None:
+        """Accept every `review` field at or above `min_confidence`. `None` if no document.
+
+        `review` only -- never `missing`. A missing field has no value to accept, and
+        `min_confidence=0` would otherwise sweep the whole third lane into `approved`,
+        which is the silent error the gate exists to prevent.
+        """
 
     def review_queue(self, *, tenant_id: str = DEFAULT_TENANT) -> list[ReviewQueueItem]: ...
 
@@ -308,28 +314,63 @@ def get_config_store() -> ConfigStore:
     return _store
 
 
+#: Where the real service is expected to live when PIPELINE=engine, as "module:factory".
+#: Overridable by PIPELINE_SERVICE so wiring the engine in costs one env var and not an
+#: edit to this file -- the same shape as REPOSITORY and CONFIG_STORE.
+DEFAULT_SERVICE_FACTORY = "backend.service:build_service"
+
+
 def _build_default_service() -> PipelineService:
     """PIPELINE=engine asks for the real thing; anything else, or a failure, is fixture.
 
-    The import is in here and not at module scope because the engine is being written in
-    parallel. A missing engine must degrade to the fixture, not stop the app from
-    starting: README section 7 promises the backend serves with nothing configured.
-    """
-    want = (os.environ.get("PIPELINE") or "fixture").strip().lower()
-    if want == "engine":
-        try:
-            from backend.engine.pipeline import build_service  # type: ignore[import-not-found]
+    The import is by name, inside the function, because the engine is being written in
+    parallel and `backend/pipeline.py` is a composition root (`process_document`, one
+    document at a time), not a PipelineService. The factory named here is the adapter
+    between the two, and it is called with the repository, the event log and the config
+    store so it does not have to find them for itself.
 
-            return build_service(
+    A missing or broken factory degrades to the fixture rather than refusing to boot:
+    README section 7 promises the backend starts and serves with nothing configured.
+    """
+    want = (os.environ.get("PIPELINE") or "persisted").strip().lower()
+    if want == "engine":
+        target = os.environ.get("PIPELINE_SERVICE") or DEFAULT_SERVICE_FACTORY
+        try:
+            from importlib import import_module
+
+            module_name, _, attr = target.partition(":")
+            factory = getattr(import_module(module_name), attr or "build_service")
+            return factory(
                 repository=get_repository(),
                 event_log=get_event_log(),
                 config_store=get_config_store(),
             )
         except Exception:
             pass
-    from backend.api.fixtures import FixtureService
 
-    return FixtureService(repository=get_repository(), event_log=get_event_log())
+    # Fixtures are reachable, but never by default. The fixture seeds a plausible accuracy
+    # figure and a pack nobody authored; serving those because a variable was left unset
+    # means the demo performs live the exact failure this product claims to prevent -- a
+    # confident number with nothing behind it. So the fixture now requires asking for it
+    # by name, and the default below invents nothing.
+    asked_for_fixtures = (os.environ.get("USE_FIXTURES") or "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    ) or want == "fixture"
+    if asked_for_fixtures:
+        from backend.api.fixtures import FixtureService
+
+        return FixtureService(repository=get_repository(), event_log=get_event_log())
+
+    from backend.api.persisted import PersistedService
+
+    return PersistedService(
+        repository=get_repository(),
+        event_log=get_event_log(),
+        config_store=get_config_store(),
+    )
 
 
 def get_pipeline_service() -> PipelineService:

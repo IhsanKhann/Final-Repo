@@ -9,8 +9,7 @@ the truth) and one contradicts itself in a footnote (so the review lane has some
 to catch).
 
 What it refuses to do: it refuses to vary. No clock, no RNG, no dict-ordering dependence, no
-PDF creation-date metadata; the one piece of per-run entropy PyMuPDF emits (the trailer
-`/ID`) is overwritten in place with a fixed, same-length value. Same CSV in, byte-identical
+PDF creation-date metadata, and no random trailer `/ID`. Same CSV in, byte-identical
 documents out, because a demo that drifts cannot be rehearsed. (The PDF `/Producer` string
 still carries the PyMuPDF version, so byte-equality holds per library version -- which is
 what `requirements.txt` pins.)
@@ -38,7 +37,6 @@ import csv
 import hashlib
 import io
 import json
-import re
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -69,38 +67,23 @@ _ROWS_PER_PAGE = 14
 #: and no text layer survives rasterization -- which is the whole point of that document.
 _SCAN_DPI = 120
 
-#: PyMuPDF writes a random document /ID into the trailer on every save. Replacing each hex
-#: group with zeros of the same length keeps every xref offset valid while removing the only
-#: per-run entropy in the file.
-_TRAILER_ID = re.compile(rb"(/ID\s*\[\s*<)([0-9A-Fa-f]*)(>\s*<)([0-9A-Fa-f]*)(>\s*\])")
-
-
-def _fixed_id(match: re.Match[bytes]) -> bytes:
-    return (
-        match.group(1)
-        + b"0" * len(match.group(2))
-        + match.group(3)
-        + b"0" * len(match.group(4))
-        + match.group(5)
-    )
-
-
-#: The trailer sits at the end of the file. Scoping the substitution to the tail keeps the
-#: pattern away from compressed image streams, where a chance match would corrupt the PDF.
-_TRAILER_WINDOW = 4096
-
-
 def _pdf_bytes(doc: fitz.Document, *, deflate_images: bool = False) -> bytes:
-    doc.set_metadata({})  # drops CreationDate / ModDate
-    raw = doc.tobytes(garbage=0, deflate=False, deflate_images=deflate_images)
-    split = max(0, len(raw) - _TRAILER_WINDOW)
-    head, tail = raw[:split], raw[split:]
-    patched, count = _TRAILER_ID.subn(_fixed_id, tail, count=1)
-    if count != 1:
-        # Loud rather than silent: an unpatched /ID is per-run entropy, and the whole
-        # point of this module is that the demo cannot drift.
-        raise RuntimeError("no trailer /ID found to normalize; output would not be stable")
-    return head + patched
+    """Serialize with every source of per-run entropy switched off.
+
+    Two of them. `set_metadata({})` drops the creation and modification dates. The other is
+    the trailer `/ID`, which PyMuPDF fills with random bytes on every save; `no_new_id`
+    suppresses it, and an `/ID` is optional for an unencrypted PDF, so the file stays valid
+    and both readers in `adapters/pdf_text.py` still parse it.
+
+    Suppressing it beats patching it out of the bytes afterwards, which is what this did
+    first and is the kind of thing that passes for a while: MuPDF writes an `/ID` element as
+    a hex string *or* as a literal string depending on the random bytes it drew, so a
+    pattern written against the hex form matched about three runs in four.
+    """
+    doc.set_metadata({})
+    return doc.tobytes(
+        garbage=0, deflate=False, deflate_images=deflate_images, no_new_id=True
+    )
 
 
 # --- Source rows --------------------------------------------------------------
@@ -205,9 +188,9 @@ def _monthly_text(rate_pct: float) -> str:
 
     Four decimals, not more, because `make_golden_set` writes `value_as_printed` as
     `f"{rate/12:.4f}"` and the document has to print the figure the golden set says it
-    prints. The cost is that x12 recovers the annual rate to within 0.0005 rather than
-    exactly, so a scorer must compare numerically with a tolerance -- which is recorded
-    per row as `recovered_annual_pct`, not left for anyone to rediscover.
+    prints. The cost is that x12 recovers the annual rate to within 0.0006 of a point
+    rather than exactly, so a scorer must compare numerically with a tolerance -- which is
+    recorded per row as `recovered_annual_pct` rather than left for anyone to rediscover.
     """
     return f"{rate_pct / 12.0:.4f}"
 
@@ -550,7 +533,12 @@ def _build_pacific(rows: list[Row]) -> dict:
     for offset, row in enumerate(rows):
         monthly = _monthly_text(row.rate_pct)
         grid.append([
-            row.product, row.term_months, float(monthly), row.apy_pct,
+            # The monthly figure goes in as text, not as a number. The golden set says the
+            # sheet prints four decimals, and a numeric cell cannot hold the trailing zero
+            # of "0.2240" without a number format -- it would come back out as "0.224" and
+            # quietly stop matching the answer key. Every other column round-trips through
+            # float with its exact digits, so only this one needs it.
+            row.product, row.term_months, monthly, row.apy_pct,
             row.min_deposit, row.effective_date,
         ])
         sheet_row = offset + 2  # row 1 holds the headings
