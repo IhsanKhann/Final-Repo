@@ -3,14 +3,10 @@
   "framework": "vite",
   "buildCommand": "cd doc-standardization-pipeline/frontend && npm install && npm run build",
   "outputDirectory": "doc-standardization-pipeline/frontend/dist",
-  "routes": [
+  "rewrites": [
     {
-      "src": "/api/(.*)",
-      "dest": "/api/index.js"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/doc-standardization-pipeline/frontend/dist/$1"
+      "source": "/api/(.*)",
+      "destination": "/api"
     }
   ]
 }

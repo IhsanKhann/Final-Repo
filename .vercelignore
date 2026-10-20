@@ -1,19 +1,14 @@
-# Ignore dependencies
-node_modules
-**/node_modules/**
-**/node_modules
-
 # Ignore root Python backend, data, docs (only needed locally/in repo)
-backend
-backend/**
-data
-data/**
-docs
-docs/**
+/backend
+/backend/**
+/data
+/data/**
+/docs
+/docs/**
 
 # Ignore terraform
-terraform
-terraform/**
+/terraform
+/terraform/**
 doc-standardization-pipeline/terraform
 doc-standardization-pipeline/terraform/**
 .terraform
@@ -33,4 +28,13 @@ venv
 # Ignore logs and scratch
 logs
 *.log
-scratch
+/scratch
+/scratch/**
+
+# ALWAYS IGNORE NODE_MODULES AND DIST AT ANY LEVEL (MUST BE AT END)
+**/node_modules
+**/node_modules/**
+node_modules
+**/dist
+**/dist/**
+dist
