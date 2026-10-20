@@ -73,6 +73,10 @@ class Resolution(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     mapping: Mapping
+    #: Which record inside the document this decision belongs to, carried through from the
+    #: fact. The Mapping itself cannot hold it -- types.ts does not declare the field -- so
+    #: it travels here, to the ledger and to the repository column.
+    record_key: str = ""
     authority: Authority | None = None
     used_model: bool = False
     #: True when a precedent or a pack rule answered and a model call was therefore not
@@ -250,6 +254,7 @@ def resolve(
 
     return Resolution(
         mapping=mapping,
+        record_key=fact.record_key,
         authority=authority,
         used_model=used_model,
         model_call_skipped=model_call_skipped,

@@ -162,6 +162,81 @@ institution, each institution using its own vocabulary for the same quantities.
 
 ---
 
+## 6b. Contract change — `MappingPatchPayload.target_field` (2026-10-20)
+
+**Decided by Ihsan. The only change to `types.ts` so far, and it is additive.**
+
+```ts
+target_field?: string;   // added — optional, existing calls unaffected
+```
+
+**Why.** `MappingPatchPayload` was `{action, value?, unit?, reason?}`. An analyst could
+accept, reject, or edit the *value* — but never say which **field** a value belongs in.
+Two consequences, both measured:
+
+- A review row whose `target_field` is empty — which is every review row when the model is
+  unavailable, because `Unavailable` correctly routes to `review` — **could never be
+  resolved through the API at all.** Demo steps 5 and 6 were not performable without a key.
+- The most valuable precedent of all is *"you mapped this to the wrong field, it is this
+  one"*, and the contract could not express it. An analyst who can only rate the system's
+  guess is not correcting the mapping. Requirement 5 is **analyst corrections feeding back
+  into the mapping**, so the payload has to carry the correction, not a verdict on it.
+
+**Frontend impact: none required.** The field is optional; existing accept/reject calls are
+unchanged. Tahreem adds a field picker to the review drawer when she wants the full
+correction flow — until then the backend accepts it and the UI simply never sends it.
+
+**This does not replace demoing with a key.** With a key the mapper proposes a field and
+`accept` works end to end; that is the demo path. `target_field` is what makes the degraded
+path and the genuine *correction* case possible.
+
+## 6c. Contract change — record identity (2026-10-20)
+
+**Decided by Ihsan.** Additive and optional, like §6b. No frontend change required.
+
+```ts
+Mapping.record_key?:   string   // which row inside the document
+Mapping.record_label?: string   // how a human refers to it
+ReviewQueueItem.record_key?, .record_label?
+```
+
+**Why.** One document holds many records and we were treating it as one. Measured on
+`pacific_savings_rates.xlsx`: 60 mappings, 60 distinct cells, **30 distinct spreadsheet
+rows**, collapsing into a single `DatasetRecord`. The gold table showed 1/30 of the data,
+`render.to_rows` had the same bug so the **export** was equally short, and `ps06`'s 150
+records would have rendered as 6 rows. PS-12 asks for "a standardized, validated dataset";
+ours was 30× short, and the golden set was unscoreable because 30 rows per institution
+cannot match against 1.
+
+It belongs on the contract, not in a repository column, for two reasons:
+
+- **The frontend needs it the moment the gold table is right.** Pacific becomes 30 rows and
+  the UI has to know which row each `Mapping` renders into.
+- **Without it the backend grows a parallel path** — a `record_key` column plus a
+  `list_mapping_rows()` returning pairs beside the existing `list_mappings()` — and the two
+  variants drift. A plumbing layer whose only job is to carry a string the contract could
+  carry itself is the kind of thing that rots.
+
+**Two fields, not one.** `record_key` is machine identity: deterministic, stable, same
+source in and same key out, so the demo cannot drift. `record_label` is what a reviewer
+reads — *"Money Market, 12 months"*. A raw `row:31` in the review drawer identifies nothing
+a person can go and look at, which is the whole point of the drawer.
+
+**`record_label` comes from the pack, never from us.** A pack may declare which of its
+fields identify a record:
+
+```yaml
+record_identity: [product_type, term_months]   # optional
+  provenance: AUTHORED
+  because: "An analyst refers to a rate-sheet row by product and term."
+```
+
+No declaration means no label, and the UI falls back to the key. Deriving a label ourselves
+would be inventing domain knowledge, which Law III forbids.
+
+**`DatasetRecord.id` changes meaning, not shape** — it stops being the document id and
+becomes the record key. No type change needed.
+
 ## 7. Open blockers, with owners
 
 | # | Blocker | Owner | Unblocks |

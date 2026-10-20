@@ -30,11 +30,11 @@
 
 id: banking_rates
 name: Deposit Rate Sheets
-version: 0.1.0-draft
+version: 1.0.0
 description: >-
   Deposit-rate reporting fields, drafted from the columns of
-  data/samples/ps06_sample_rate_sheets.csv. Draft, not accepted.
-status: PROPOSED
+  data/samples/ps06_sample_rate_sheets.csv. Accepted by the pack owner.
+status: ACCEPTED
 updated_at: "2026-10-20T00:00:00Z"
 
 # The dataset every MEASURED declaration below was counted against, repo-root relative.
@@ -66,7 +66,9 @@ fields:
     range:
       min: 0.0
       max: 25.0
-    status: PROPOSED
+    status: ACCEPTED
+    accepted_by: Ihsan Khan
+    accepted_at: "2026-10-20"
     provenance:
       tag: MEASURED
       occurrences: 150
@@ -91,7 +93,9 @@ fields:
     range:
       min: 0.0
       max: 25.0
-    status: PROPOSED
+    status: ACCEPTED
+    accepted_by: Ihsan Khan
+    accepted_at: "2026-10-20"
     provenance:
       tag: MEASURED
       occurrences: 150
@@ -115,7 +119,9 @@ fields:
     range:
       min: 0.0
       max: 1000000.0
-    status: PROPOSED
+    status: ACCEPTED
+    accepted_by: Ihsan Khan
+    accepted_at: "2026-10-20"
     provenance:
       tag: MEASURED
       occurrences: 7
@@ -139,7 +145,9 @@ fields:
     range:
       min: 0.0
       max: 600.0
-    status: PROPOSED
+    status: ACCEPTED
+    accepted_by: Ihsan Khan
+    accepted_at: "2026-10-20"
     provenance:
       tag: MEASURED
       occurrences: 7
@@ -162,7 +170,9 @@ fields:
       - Date Effective
       - Rates effective
     range: null
-    status: PROPOSED
+    status: ACCEPTED
+    accepted_by: Ihsan Khan
+    accepted_at: "2026-10-20"
     provenance:
       tag: MEASURED
       occurrences: 3
@@ -182,7 +192,9 @@ conversions:
     to: percent_per_annum
     factor: 12.0
     formula_text: x 12 (monthly -> annual)
-    status: PROPOSED
+    status: ACCEPTED
+    accepted_by: Ihsan Khan
+    accepted_at: "2026-10-20"
     provenance:
       tag: AUTHORED
       because: >-
@@ -212,7 +224,9 @@ precedence:
     description: >-
       Show both, with both source locations, and let a human choose. Nothing is
       auto-accepted.
-    status: PROPOSED
+    status: ACCEPTED
+    accepted_by: Ihsan Khan
+    accepted_at: "2026-10-20"
     provenance:
       tag: AUTHORED
       because: >-
@@ -232,7 +246,9 @@ precedence:
     action: warn
     description: >-
       Keep every version, warn, and let a human say which one the report should carry.
-    status: PROPOSED
+    status: ACCEPTED
+    accepted_by: Ihsan Khan
+    accepted_at: "2026-10-20"
     provenance:
       tag: AUTHORED
       because: >-
@@ -254,7 +270,9 @@ materiality:
     description: >-
       A difference at or below half of the last published decimal place is rounding
       noise and is not raised. Anything larger is flagged.
-    status: PROPOSED
+    status: ACCEPTED
+    accepted_by: Ihsan Khan
+    accepted_at: "2026-10-20"
     provenance:
       tag: AUTHORED
       because: >-
@@ -273,7 +291,9 @@ materiality:
     description: >-
       Every minimum in the data sits on a round tier. A value off the ladder is more
       likely a misread digit than a real price point, so it is worth a glance.
-    status: PROPOSED
+    status: ACCEPTED
+    accepted_by: Ihsan Khan
+    accepted_at: "2026-10-20"
     provenance:
       tag: MEASURED
       occurrences: 7
@@ -296,7 +316,9 @@ ambiguity:
     description: >-
       A yield lower than the nominal rate it derives from is arithmetically impossible
       for a compounding product. Flag the pair for review; do not repair either number.
-    status: PROPOSED
+    status: ACCEPTED
+    accepted_by: Ihsan Khan
+    accepted_at: "2026-10-20"
     provenance:
       tag: MEASURED
       occurrences: 150
@@ -314,7 +336,9 @@ ambiguity:
     description: >-
       Zero is a demand product. It must be written through to the output as 0 and must
       never be routed to the missing lane or re-read as null.
-    status: PROPOSED
+    status: ACCEPTED
+    accepted_by: Ihsan Khan
+    accepted_at: "2026-10-20"
     provenance:
       tag: MEASURED
       occurrences: 113
@@ -332,7 +356,9 @@ ambiguity:
     description: >-
       Route the label to review with the candidate fields attached. A label the pack
       does not declare is never mapped to a field by guesswork.
-    status: PROPOSED
+    status: ACCEPTED
+    accepted_by: Ihsan Khan
+    accepted_at: "2026-10-20"
     provenance:
       tag: MEASURED
       occurrences: 6
@@ -352,7 +378,9 @@ ambiguity:
     description: >-
       A value is not identified by its column heading alone. Without a product and term
       to key it, the row is ambiguous and goes to review.
-    status: PROPOSED
+    status: ACCEPTED
+    accepted_by: Ihsan Khan
+    accepted_at: "2026-10-20"
     provenance:
       tag: MEASURED
       occurrences: 6
@@ -371,7 +399,9 @@ ambiguity:
     description: >-
       A conversion that moves a value by more than three orders of magnitude goes to
       review regardless of confidence.
-    status: PROPOSED
+    status: ACCEPTED
+    accepted_by: Ihsan Khan
+    accepted_at: "2026-10-20"
     provenance:
       tag: AUTHORED
       because: >-
@@ -390,7 +420,9 @@ ambiguity:
     description: >-
       Record the upstream prior as evidence on the cell and let the gate decide
       independently. Never adopt it as ground truth and never fit a threshold to it.
-    status: PROPOSED
+    status: ACCEPTED
+    accepted_by: Ihsan Khan
+    accepted_at: "2026-10-20"
     provenance:
       tag: MEASURED
       occurrences: 33

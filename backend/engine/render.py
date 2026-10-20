@@ -91,22 +91,31 @@ def to_rows(
     field_order: Sequence[str],
     *,
     audit: bool = False,
+    record_keys: dict[str, str] | None = None,
 ) -> list[dict[str, str]]:
-    """Group mappings into one row per document, with columns in the pack's declared order.
+    """One row per RECORD, with columns in the pack's declared order.
+
+    `record_keys` maps a mapping id to which record inside its document it belongs to. A
+    document is not a record: a rate sheet holds one record per product row, and grouping
+    by document alone produced one row where there were thirty, with the last value
+    written winning. Omitting it keeps the old document-level grouping, which is correct
+    only for a document that really is a single record.
 
     A mapping with no target field (the `missing` lane after a refusal) still contributes
-    its document row, because a missing value is written and shown, never dropped.
+    its row, because a missing value is written and shown, never dropped.
     """
-    by_document: dict[str, dict[str, Mapping]] = {}
+    keys = record_keys or {}
+    grouped: dict[tuple[str, str], dict[str, Mapping]] = {}
     for mapping in mappings:
-        by_document.setdefault(mapping.document_id, {})
+        group = (mapping.document_id, keys.get(mapping.id, ""))
+        grouped.setdefault(group, {})
         if mapping.target_field:
-            by_document[mapping.document_id][mapping.target_field] = mapping
+            grouped[group][mapping.target_field] = mapping
 
     rows: list[dict[str, str]] = []
-    for document_id in sorted(by_document):
-        fields = by_document[document_id]
-        row: dict[str, str] = {"document_id": document_id}
+    for document_id, record_key in sorted(grouped):
+        fields = grouped[(document_id, record_key)]
+        row: dict[str, str] = {"document_id": document_id, "record": record_key}
         for field in field_order:
             mapping = fields.get(field)
             row[field] = "" if mapping is None else mapping.value
@@ -123,13 +132,17 @@ def to_rows(
 
 
 def render_csv(
-    mappings: Iterable[Mapping], field_order: Sequence[str], *, audit: bool = False
+    mappings: Iterable[Mapping],
+    field_order: Sequence[str],
+    *,
+    audit: bool = False,
+    record_keys: dict[str, str] | None = None,
 ) -> bytes:
     """Deterministic CSV. LF terminator on every platform, declared column order."""
-    columns = ["document_id", *field_order]
+    columns = ["document_id", "record", *field_order]
     if audit:
         columns += list(AUDIT_COLUMNS)
-    rows = to_rows(mappings, field_order, audit=audit)
+    rows = to_rows(mappings, field_order, audit=audit, record_keys=record_keys)
 
     buffer = io.StringIO(newline="")
     writer = csv.DictWriter(buffer, fieldnames=columns, lineterminator="\n", extrasaction="ignore")
@@ -140,9 +153,13 @@ def render_csv(
 
 
 def render_json(
-    mappings: Iterable[Mapping], field_order: Sequence[str], *, audit: bool = False
+    mappings: Iterable[Mapping],
+    field_order: Sequence[str],
+    *,
+    audit: bool = False,
+    record_keys: dict[str, str] | None = None,
 ) -> bytes:
     """Deterministic JSON. Sorted keys, fixed separators, trailing newline."""
-    rows = to_rows(mappings, field_order, audit=audit)
+    rows = to_rows(mappings, field_order, audit=audit, record_keys=record_keys)
     text = json.dumps(rows, sort_keys=True, indent=2, separators=(",", ": "), ensure_ascii=False)
     return (text + "\n").encode("utf-8")

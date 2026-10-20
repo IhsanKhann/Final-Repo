@@ -413,6 +413,18 @@ class ExtractedFact(Boundary):
     raw_value: str
     raw_unit: str | None = None
     source_location: SourceLocation
+    #: Which RECORD inside the document this fact belongs to -- a rate sheet holds one
+    #: record per product row, not one record per file. Set deterministically by the
+    #: adapter, which is the only layer that knows the document's own structure (a sheet
+    #: row number, an HTML table row index, a PDF table row).
+    #:
+    #: Empty means "this document is a single record", which is the honest degenerate case
+    #: for a narrative disclosure. It is a default rather than a required field so that
+    #: every existing fixture keeps constructing, and
+    #: tests/test_a_document_can_hold_many_records.py asserts no real adapter leaves it
+    #: empty -- an adapter that forgot would silently collapse 30 records into 1, which is
+    #: the bug this field exists to fix.
+    record_key: str = ""
     #: Any prior arriving from an upstream extractor, recorded as evidence, never trusted.
     extractor_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     context: str | None = None

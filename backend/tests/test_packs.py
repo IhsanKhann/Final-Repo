@@ -391,15 +391,38 @@ def test_a_unit_that_arrives_unconvertible_is_refused(tmp_path: Path):
 def test_nothing_in_the_shipped_pack_claims_to_have_been_accepted(pack: Pack):
     """We may draft a pack. We may never author one.
 
-    Every declaration is born PROPOSED and only a named human moves it. If this test ever
-    fails, either a person really did accept these declarations -- and this test is the
-    place that records it -- or an agent promoted its own draft.
+    THE ACCEPTANCE THIS TEST RECORDS: on 2026-10-20 Ihsan Khan, the pack owner, accepted
+    banking_rates v1.0.0 -- every field, conversion and rule. The previous form of this
+    test asserted `pack.status == "PROPOSED"` and its docstring said that if it ever
+    failed, either a person really had accepted the pack and this test was the place to
+    record it, or an agent had promoted its own draft. The first happened.
+
+    So the guard is reframed rather than deleted, because "nothing is ever accepted" stops
+    being true the moment the product is used as intended, and a test that must be deleted
+    on first real use was only ever guarding the draft. What must stay impossible is
+    ACCEPTANCE WITHOUT A NAMED HUMAN -- an agent promoting its own draft looks exactly like
+    a legitimate acceptance except that nobody is named.
     """
-    assert pack.status == "PROPOSED"
-    premature = [
-        (d.key, d.accepted_by) for d in pack.declarations if d.status != "PROPOSED"
+    anonymous = [
+        d.key
+        for d in pack.declarations
+        if d.status == "ACCEPTED" and not (d.accepted_by or "").strip()
     ]
-    assert premature == [], f"accepted without a human accepting them: {premature}"
+    assert anonymous == [], f"ACCEPTED with nobody named: {anonymous}"
+
+    undated = [
+        d.key
+        for d in pack.declarations
+        if d.status == "ACCEPTED" and not (d.accepted_at or "").strip()
+    ]
+    assert undated == [], f"ACCEPTED with no date: {undated}"
+
+    assert pack.status in {"PROPOSED", "ACCEPTED"}
+    if pack.status == "ACCEPTED":
+        # A pack accepted as a whole while a declaration inside it is still a draft would
+        # let a drafted rule ride in on the pack's acceptance.
+        drafts = [d.key for d in pack.declarations if d.status != "ACCEPTED"]
+        assert drafts == [], f"pack is ACCEPTED but these are still drafts: {drafts}"
 
 
 def test_every_declaration_carries_one_of_the_three_provenance_tags(pack: Pack):

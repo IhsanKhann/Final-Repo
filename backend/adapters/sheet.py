@@ -177,6 +177,9 @@ def _facts(document_id: str, sheets: list[Sheet]) -> list[ExtractedFact]:
                         source_location=SourceLocationSheet(
                             sheet=name, cell=cell_ref(column, row)
                         ),
+                        # One record per row, qualified by sheet: two sheets both have a
+                        # row 7 and they are different records.
+                        record_key=f"{name}!row:{row}",
                         context=context,
                     )
                 )
