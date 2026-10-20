@@ -29,10 +29,12 @@ export function UploadPage() {
   const { activePack, setActivePack } = useActivePack();
 
   const [activeTab, setActiveTab] = useState<'files' | 'url'>('files');
-  const [items, setItems] = useState<UploadItem[]>([
-    { id: 'sample-1', name: 'rates_q3.xlsx', type: 'Excel', size: 204800, status: 'Ready', progress: 100 },
-    { id: 'sample-2', name: 'filing.pdf', type: 'PDF (scan)', size: 1048576, status: 'Ready', progress: 100 },
-  ]);
+  // ⚠ Two files used to be seeded here — rates_q3.xlsx and filing.pdf — already marked
+  // Ready at 100%. They were names with no File object behind them, so the queue opened
+  // looking loaded and pressing Process sent nothing. An upload screen that appears to
+  // already hold your documents is worse than an empty one: it hides the only action
+  // the page exists for.
+  const [items, setItems] = useState<UploadItem[]>([]);
   const [reportUrl, setReportUrl] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
