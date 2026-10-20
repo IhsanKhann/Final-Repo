@@ -1,0 +1,36 @@
+# Ignore dependencies
+node_modules
+**/node_modules/**
+**/node_modules
+
+# Ignore root Python backend, data, docs (only needed locally/in repo)
+backend
+backend/**
+data
+data/**
+docs
+docs/**
+
+# Ignore terraform
+terraform
+terraform/**
+doc-standardization-pipeline/terraform
+doc-standardization-pipeline/terraform/**
+.terraform
+**/.terraform/**
+*.tfstate*
+
+# Ignore git and environments
+.git
+.github
+.venv
+venv
+**/__pycache__/**
+**/*.pyc
+.env*
+!.env.example
+
+# Ignore logs and scratch
+logs
+*.log
+scratch
