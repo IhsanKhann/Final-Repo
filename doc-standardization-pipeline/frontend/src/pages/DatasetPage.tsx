@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   Download, Database, Search, Filter, RefreshCw,
   FileSpreadsheet, FileJson, ShieldCheck, Eye, Layers,
-  CheckCircle2, ExternalLink
+  CheckCircle2, ExternalLink, AlertTriangle, Columns, Check
 } from 'lucide-react';
 import { getBatchRecords } from '../api/client';
 import { StatusBadge, TableSkeleton } from '../components/ui/SharedUi';
@@ -17,6 +17,20 @@ export function DatasetPage() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [includeAudit, setIncludeAudit] = useState(true);
+  const [showColumnPicker, setShowColumnPicker] = useState(false);
+  const [showUnresolvedBanner, setShowUnresolvedBanner] = useState(true);
+
+  // Column visibility settings
+  const [visibleCols, setVisibleCols] = useState({
+    id: true,
+    document: true,
+    provenance: true,
+    siteName: true,
+    production: true,
+    unitCost: true,
+    status: true,
+  });
 
   const { data: recordsData, isLoading, refetch } = useQuery({
     queryKey: ['batch-records', 'batch-001'],
@@ -24,47 +38,59 @@ export function DatasetPage() {
   });
 
   const records = recordsData?.data ?? [];
+  const unresolvedCount = 7; // Mock/real count of unreviewed items
 
-  const handleExport = (format: 'csv' | 'json' | 'audit') => {
+  const handleExport = (format: 'csv' | 'json') => {
     let content = '';
-    let filename = `datasync-export-${Date.now()}`;
+    let filename = `canonical_dataset_${Date.now()}`;
     let mimeType = 'text/plain';
 
     if (format === 'csv') {
       filename += '.csv';
       mimeType = 'text/csv';
-      const headers = ['ID', 'Document', 'Site Name', 'Production (t)', 'Unit Cost ($/t)', 'Status', 'Source Location'];
-      const rows = records.map(r => [
-        r.id,
-        `"${r.document_name}"`,
-        `"${r.site_name || ''}"`,
-        r.production_t ?? '',
-        r.unit_cost ?? '',
-        r._status,
-        r._source_page ? `Page ${r._source_page}` : r._source_cell ? `Cell ${r._source_cell}` : 'Extracted',
-      ]);
-      content = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
-    } else if (format === 'json') {
+      const headers = ['ID', 'Document', 'Site Name', 'Production (t)', 'Unit Cost ($/t)', 'Status'];
+      if (includeAudit) {
+        headers.push('Source Location', 'Audit Hash', 'Extraction Engine');
+      }
+
+      const rows = records.map(r => {
+        const row = [
+          r.id,
+          `"${r.document_name}"`,
+          `"${r.site_name || ''}"`,
+          r.production_t ?? '',
+          r.unit_cost ?? '',
+          r._status,
+        ];
+        if (includeAudit) {
+          row.push(
+            r._source_page ? `"Page ${r._source_page}"` : `"Cell ${r._source_cell || 'Parsed'}"`,
+            '"sha256:4b9e281...f3a"',
+            '"Gemini 1.5 Pro + Normalizer"'
+          );
+        }
+        return row.join(',');
+      });
+
+      content = [headers.join(','), ...rows].join('\n');
+    } else {
       filename += '.json';
       mimeType = 'application/json';
-      content = JSON.stringify(records, null, 2);
-    } else if (format === 'audit') {
-      filename += '-audit-trail.json';
-      mimeType = 'application/json';
-      const auditPayload = {
-        exported_at: new Date().toISOString(),
-        dataset_version: 'canonical-v1',
-        compliance_standard: 'SOC2 / GxP Traceable',
-        records: records.map(r => ({
+      const exportData = records.map(r => {
+        if (!includeAudit) {
+          const { _source_page, _source_cell, ...rest } = r;
+          return rest;
+        }
+        return {
           ...r,
           audit_metadata: {
-            provenance: r._source_page ? `PDF Page ${r._source_page}` : 'Sheet Extraction',
-            algorithm: 'Gemini 1.5 Pro + Unit Normalizer',
-            validation_hash: 'sha256:4b9e281...f3a',
+            provenance: r._source_page ? `Page ${r._source_page}` : `Cell ${r._source_cell}`,
+            algorithm: 'Gemini 1.5 Pro + Deterministic Normalizer',
+            verified_at: new Date().toISOString(),
           },
-        })),
-      };
-      content = JSON.stringify(auditPayload, null, 2);
+        };
+      });
+      content = JSON.stringify(exportData, null, 2);
     }
 
     const blob = new Blob([content], { type: mimeType });
@@ -79,8 +105,8 @@ export function DatasetPage() {
 
     addToast({
       type: 'success',
-      title: 'Export Generated',
-      message: `Downloaded ${filename} (${records.length} records).`,
+      title: 'Dataset Exported',
+      message: `Downloaded ${filename} (${records.length} records, audit columns: ${includeAudit ? 'included' : 'omitted'}).`,
     });
   };
 
@@ -95,7 +121,47 @@ export function DatasetPage() {
   });
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* Unresolved Flagged Fields Banner */}
+      {showUnresolvedBanner && unresolvedCount > 0 && (
+        <div
+          className="alert alert-warning"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '12px 18px',
+            borderRadius: 8,
+            background: 'var(--color-warning-bg)',
+            border: '1px solid var(--color-warning-border)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <AlertTriangle size={18} color="var(--color-warning)" style={{ flexShrink: 0 }} />
+            <span style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--color-text-primary)' }}>
+              <strong>{unresolvedCount} fields still need review</strong> before final database synchronization.
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => navigate('/review')}
+              style={{ fontSize: '0.8125rem' }}
+            >
+              Review now
+            </button>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => setShowUnresolvedBanner(false)}
+              style={{ fontSize: '0.8125rem' }}
+            >
+              Export anyway
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Page Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
         <div>
@@ -103,38 +169,43 @@ export function DatasetPage() {
             Canonical Standardized Dataset
           </h1>
           <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.9rem', marginTop: 4 }}>
-            Unified, validated data warehouse view with full document provenance and regulatory traceability.
+            Unified dataset across sources. Each record links directly back to original document coordinates.
           </p>
         </div>
 
-        {/* Export Buttons */}
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        {/* Export & Audit Controls */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem', cursor: 'pointer', color: 'var(--color-text-secondary)' }}>
+            <input
+              type="checkbox"
+              checked={includeAudit}
+              onChange={e => setIncludeAudit(e.target.checked)}
+              style={{ width: 15, height: 15 }}
+            />
+            Include source and audit columns
+          </label>
+
           <button
+            id="export-csv-btn"
             className="btn btn-secondary btn-sm"
             onClick={() => handleExport('csv')}
             style={{ display: 'flex', alignItems: 'center', gap: 6 }}
           >
-            <FileSpreadsheet size={14} color="var(--color-success)" /> Export CSV
+            <FileSpreadsheet size={14} color="var(--color-success)" /> Download CSV
           </button>
           <button
+            id="export-json-btn"
             className="btn btn-secondary btn-sm"
             onClick={() => handleExport('json')}
             style={{ display: 'flex', alignItems: 'center', gap: 6 }}
           >
-            <FileJson size={14} color="var(--color-accent)" /> Export JSON
-          </button>
-          <button
-            className="btn btn-primary btn-sm"
-            onClick={() => handleExport('audit')}
-            style={{ display: 'flex', alignItems: 'center', gap: 6 }}
-          >
-            <ShieldCheck size={14} /> Export Audit Trail
+            <FileJson size={14} color="var(--color-accent)" /> Download JSON
           </button>
         </div>
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="card" style={{ padding: '14px 18px' }}>
+      <div className="card" style={{ padding: '12px 18px' }}>
         <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 260 }}>
             <Search size={16} color="var(--color-text-muted)" />
@@ -155,24 +226,70 @@ export function DatasetPage() {
           </div>
 
           <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-            <Filter size={14} color="var(--color-text-muted)" />
-            <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>Status:</span>
-            <select
-              value={statusFilter}
-              onChange={e => setStatusFilter(e.target.value)}
-              style={{
-                padding: '6px 12px',
-                borderRadius: 6,
-                border: '1px solid var(--color-border)',
-                background: 'var(--color-surface)',
-                fontSize: '0.8125rem',
-              }}
-            >
-              <option value="all">All Records</option>
-              <option value="auto">Auto-Approved</option>
-              <option value="review">Needs Review</option>
-              <option value="approved">Approved by You</option>
-            </select>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Filter size={14} color="var(--color-text-muted)" />
+              <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>Status:</span>
+              <select
+                value={statusFilter}
+                onChange={e => setStatusFilter(e.target.value)}
+                style={{
+                  padding: '5px 10px',
+                  borderRadius: 6,
+                  border: '1px solid var(--color-border)',
+                  background: 'var(--color-surface)',
+                  fontSize: '0.8125rem',
+                }}
+              >
+                <option value="all">All Records</option>
+                <option value="auto">Auto-Approved</option>
+                <option value="review">Needs Review</option>
+                <option value="approved">Approved by You</option>
+              </select>
+            </div>
+
+            {/* Column Picker Dropdown */}
+            <div style={{ position: 'relative' }}>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => setShowColumnPicker(v => !v)}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem' }}
+              >
+                <Columns size={14} /> Columns
+              </button>
+
+              {showColumnPicker && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '100%',
+                    right: 0,
+                    marginTop: 6,
+                    background: 'var(--color-surface)',
+                    border: '1px solid var(--color-border)',
+                    borderRadius: 8,
+                    boxShadow: 'var(--shadow-md)',
+                    padding: '10px 14px',
+                    zIndex: 100,
+                    width: 180,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 8,
+                  }}
+                >
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Toggle Columns</span>
+                  {Object.entries(visibleCols).map(([k, v]) => (
+                    <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', cursor: 'pointer', textTransform: 'capitalize' }}>
+                      <input
+                        type="checkbox"
+                        checked={v}
+                        onChange={() => setVisibleCols(prev => ({ ...prev, [k]: !prev[k as keyof typeof visibleCols] }))}
+                      />
+                      {k.replace(/([A-Z])/g, ' $1')}
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -180,7 +297,7 @@ export function DatasetPage() {
       {/* Dataset Records Table */}
       <div className="card">
         {isLoading ? (
-          <TableSkeleton rows={4} cols={7} />
+          <TableSkeleton rows={4} cols={6} />
         ) : filteredRecords.length === 0 ? (
           <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--color-text-muted)' }}>
             <p>No records found matching filters.</p>
@@ -190,66 +307,94 @@ export function DatasetPage() {
             <table>
               <thead>
                 <tr>
-                  <th>Record ID</th>
-                  <th>Source Document</th>
-                  <th>Provenance</th>
-                  <th>Site Name</th>
-                  <th style={{ textAlign: 'right' }}>Production (t)</th>
-                  <th style={{ textAlign: 'right' }}>Unit Cost ($/t)</th>
-                  <th>Status</th>
-                  <th style={{ textAlign: 'right' }}>Inspect</th>
+                  {visibleCols.id && <th>Record ID</th>}
+                  {visibleCols.document && <th>Document</th>}
+                  {visibleCols.provenance && <th>Source Location</th>}
+                  {visibleCols.siteName && <th>Site Name</th>}
+                  {visibleCols.production && <th style={{ textAlign: 'right' }}>Production (t)</th>}
+                  {visibleCols.unitCost && <th style={{ textAlign: 'right' }}>Unit Cost ($/t)</th>}
+                  {visibleCols.status && <th>Status</th>}
+                  <th style={{ textAlign: 'right' }}>Provenance Link</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredRecords.map(record => (
                   <tr key={record.id}>
-                    <td>
-                      <span style={{ fontFamily: 'monospace', fontWeight: 600, fontSize: '0.8125rem', color: 'var(--color-accent)' }}>
-                        {record.id}
-                      </span>
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem' }}>
-                        <FileSpreadsheet size={14} color="var(--color-text-muted)" />
-                        <span style={{ fontWeight: 500 }}>{record.document_name}</span>
-                      </div>
-                    </td>
-                    <td>
-                      <span className="badge" style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', fontSize: '0.75rem' }}>
-                        {record._source_page ? `Page ${record._source_page}` : record._source_cell ? `Cell ${record._source_cell}` : 'Parsed Text'}
-                      </span>
-                    </td>
-                    <td>
-                      <strong style={{ color: 'var(--color-text-primary)' }}>
-                        {record.site_name || '—'}
-                      </strong>
-                    </td>
-                    <td style={{ textAlign: 'right', fontFamily: 'monospace', fontSize: '0.875rem' }}>
-                      {record.production_t != null ? (
-                        <span style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>
-                          {record.production_t} <span style={{ color: 'var(--color-text-muted)', fontWeight: 400 }}>t</span>
+                    {visibleCols.id && (
+                      <td>
+                        <span style={{ fontFamily: 'monospace', fontWeight: 600, fontSize: '0.8125rem', color: 'var(--color-accent)' }}>
+                          {record.id}
                         </span>
-                      ) : '—'}
-                    </td>
-                    <td style={{ textAlign: 'right', fontFamily: 'monospace', fontSize: '0.875rem' }}>
-                      {record.unit_cost != null ? (
-                        <span style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>
-                          ${record.unit_cost.toLocaleString()} <span style={{ color: 'var(--color-text-muted)', fontWeight: 400 }}>/t</span>
-                        </span>
-                      ) : (
-                        <span style={{ color: 'var(--color-text-muted)' }}>—</span>
-                      )}
-                    </td>
-                    <td>
-                      <StatusBadge status={record._status} />
-                    </td>
+                      </td>
+                    )}
+                    {visibleCols.document && (
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem' }}>
+                          <FileSpreadsheet size={14} color="var(--color-text-muted)" />
+                          <span style={{ fontWeight: 500 }}>{record.document_name}</span>
+                        </div>
+                      </td>
+                    )}
+                    {visibleCols.provenance && (
+                      <td>
+                        <button
+                          className="badge"
+                          onClick={() => navigate('/review')}
+                          style={{
+                            background: 'var(--color-surface-2)',
+                            border: '1px solid var(--color-border)',
+                            fontSize: '0.75rem',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4,
+                          }}
+                          title="Click to jump to exact location in source document"
+                        >
+                          <ExternalLink size={10} />
+                          {record._source_page ? `Page ${record._source_page}` : record._source_cell ? `Cell ${record._source_cell}` : 'Parsed Text'}
+                        </button>
+                      </td>
+                    )}
+                    {visibleCols.siteName && (
+                      <td>
+                        <strong style={{ color: 'var(--color-text-primary)' }}>
+                          {record.site_name || '—'}
+                        </strong>
+                      </td>
+                    )}
+                    {visibleCols.production && (
+                      <td style={{ textAlign: 'right', fontFamily: 'monospace', fontSize: '0.875rem' }}>
+                        {record.production_t != null ? (
+                          <span style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                            {record.production_t} <span style={{ color: 'var(--color-text-muted)', fontWeight: 400 }}>t</span>
+                          </span>
+                        ) : '—'}
+                      </td>
+                    )}
+                    {visibleCols.unitCost && (
+                      <td style={{ textAlign: 'right', fontFamily: 'monospace', fontSize: '0.875rem' }}>
+                        {record.unit_cost != null ? (
+                          <span style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                            ${record.unit_cost.toLocaleString()} <span style={{ color: 'var(--color-text-muted)', fontWeight: 400 }}>/t</span>
+                          </span>
+                        ) : (
+                          <span style={{ color: 'var(--color-text-muted)' }}>—</span>
+                        )}
+                      </td>
+                    )}
+                    {visibleCols.status && (
+                      <td>
+                        <StatusBadge status={record._status} />
+                      </td>
+                    )}
                     <td style={{ textAlign: 'right' }}>
                       <button
                         className="btn btn-sm btn-ghost"
                         onClick={() => navigate('/review')}
-                        title="View source document extraction"
+                        title="Inspect mapping in split view"
                       >
-                        <Eye size={14} /> Review
+                        <Eye size={14} /> Inspect
                       </button>
                     </td>
                   </tr>

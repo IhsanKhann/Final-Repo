@@ -9,6 +9,7 @@ import { HomePage } from './pages/HomePage';
 import { UploadPage } from './pages/UploadPage';
 import { BatchesPage } from './pages/BatchesPage';
 import { ReviewPage } from './pages/ReviewPage';
+import { ReviewQueuePage } from './pages/ReviewQueuePage';
 import { DatasetPage } from './pages/DatasetPage';
 import { SchemaPage } from './pages/SchemaPage';
 import { InsightsPage } from './pages/InsightsPage';
@@ -28,6 +29,7 @@ export function App() {
                 <Route path="/upload" element={<UploadPage />} />
                 <Route path="/batches" element={<BatchesPage />} />
                 <Route path="/review" element={<ReviewPage />} />
+                <Route path="/review-queue" element={<ReviewQueuePage />} />
                 <Route path="/dataset" element={<DatasetPage />} />
                 <Route path="/schema" element={<SchemaPage />} />
                 <Route path="/insights" element={<InsightsPage />} />

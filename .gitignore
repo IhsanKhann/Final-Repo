@@ -20,28 +20,58 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Environment and secrets
+# ── Secrets ─────────────────────────────────────────────────────────────────
+# .env holds real keys. It is NEVER committed. .env.example holds empty keys.
 .env
 .env.local
 .env.*.local
+*.env
+!.env.example
+!Frontend/.env
+!doc-standardization-pipeline/frontend/.env
 *.pem
 *.key
+
+# Service accounts & cloud credentials
+*service-account*.json
+*credentials*.json
+gcp-key*.json
+application_default_credentials.json
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local stores (config, ledger, precedents)
+*.db
+*.sqlite
+*.sqlite3
+.canon/
 
 # Terraform
 .terraform/
 *.tfstate
 *.tfstate.*
 .terraform.lock.hcl
+*.tfvars
+!*.tfvars.example
+tf.plan
 
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-venv/
-.venv/
+# Generated demo documents & eval output
+backend/eval/generated/
+runs/
 
 # IDE & OS
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Source archive
+sample.zip
