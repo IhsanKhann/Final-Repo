@@ -92,7 +92,7 @@ export function SettingsPage() {
   const [mobileDrilled, setMobileDrilled] = useState(false);
 
   // Profile Form State
-  const [name, setName] = useState(user?.name ?? 'Amina Khan');
+  const [name, setName] = useState(user?.name ?? 'Local analyst');
   const [jobTitle, setJobTitle] = useState(user?.jobTitle ?? 'Senior ESG & Operational Analyst');
   const [timezone, setTimezone] = useState(user?.timezone ?? 'Asia/Karachi');
   const [language, setLanguage] = useState(user?.language ?? 'English (US)');

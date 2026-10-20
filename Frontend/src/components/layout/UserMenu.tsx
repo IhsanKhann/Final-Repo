@@ -74,10 +74,11 @@ export function UserMenu({ onOpenShortcuts }: { onOpenShortcuts?: () => void }) 
       Reviewer: 'reviewer@local',
       Admin: 'admin@local',
     };
+    // Role names, not invented people. Three fabricated analysts used to live here.
     const names = {
-      Analyst: 'Amina Khan',
-      Reviewer: 'Sarah Chen',
-      Admin: 'Alex Vance (Lead)',
+      Analyst: 'Analyst (local)',
+      Reviewer: 'Reviewer (local)',
+      Admin: 'Admin (local)',
     };
     signIn(emails[role], role, names[role]);
     setShowSignInModal(false);
