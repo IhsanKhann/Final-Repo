@@ -3,6 +3,7 @@ import type {
   SchemaPack, HomeStats, MappingPatchPayload, MappingPatchResponse,
   BulkAcceptPayload, BulkAcceptResponse, CreateBatchPayload,
   PaginatedResponse, DatasetRecord,
+  SettingsView, SettingsPatch, ControlView, SecretView,
 } from './types';
 import { ENDPOINTS } from './endpoints';
 import {
@@ -200,6 +201,83 @@ export async function getInsights(): Promise<Insights> {
 export async function getHealth(): Promise<HealthStatus> {
   if (USE_MOCK) { await delay(150); return MOCK_HEALTH; }
   return apiFetch<HealthStatus>(ENDPOINTS.health.get());
+}
+
+// ─── Settings (config layer) ─────────────────────────────────────────────────
+// Mirrors `backend/api/settings.py`. The mock below exists only so the page still
+// renders with VITE_USE_MOCK=true; it reports every value as coming from `default`,
+// which is the honest answer when there is no store behind it.
+
+const MOCK_CONTROL_DEFAULTS: ReadonlyArray<[string, string, string | number]> = [
+  ['active_pack_id', 'ACTIVE_PACK_ID', ''],
+  ['analyst_minutes_per_field', 'ANALYST_MINUTES_PER_FIELD', 1.5],
+  ['async_page_threshold', 'ASYNC_PAGE_THRESHOLD', 15],
+  ['gate_auto_threshold', 'GATE_AUTO_THRESHOLD', 0.9],
+  ['gate_review_threshold', 'GATE_REVIEW_THRESHOLD', 0.6],
+  ['max_tokens', 'MAX_TOKENS', 1024],
+  ['model', 'MODEL', 'gpt-4o-2024-11-20'],
+  ['prompt_version', 'PROMPT_VERSION', 'v1'],
+  ['provider', 'PROVIDER', 'openai'],
+  ['temperature', 'TEMPERATURE', 0],
+  ['timeout_s', 'TIMEOUT_S', 30],
+  ['token_budget_per_doc', 'TOKEN_BUDGET_PER_DOC', 40000],
+  ['vision_model', 'VISION_MODEL', 'gpt-4o-2024-11-20'],
+];
+
+const MOCK_SECRET_IDS: ReadonlyArray<[string, string]> = [
+  ['anthropic_api_key', 'ANTHROPIC_API_KEY'],
+  ['docai_processor_id', 'DOCAI_PROCESSOR_ID'],
+  ['google_api_key', 'GOOGLE_API_KEY'],
+  ['openai_api_key', 'OPENAI_API_KEY'],
+  ['openrouter_api_key', 'OPENROUTER_API_KEY'],
+];
+
+const MOCK_CONTROLS: ControlView[] = MOCK_CONTROL_DEFAULTS.map(([key, env_var, def]) => ({
+  key, env_var, value: def, default: def, source: 'default' as const,
+}));
+
+const MOCK_SECRETS: SecretView[] = MOCK_SECRET_IDS.map(([id, env_var]) => ({
+  id, env_var, present: false, source: 'unset' as const,
+}));
+
+export async function getSettings(): Promise<SettingsView> {
+  if (USE_MOCK) {
+    await delay(200);
+    return {
+      tenant_id: 'demo',
+      controls: MOCK_CONTROLS,
+      secrets: MOCK_SECRETS,
+      checked_at: new Date().toISOString(),
+      updated: [],
+    };
+  }
+  return apiFetch<SettingsView>(ENDPOINTS.settings.get());
+}
+
+export async function patchSettings(patch: SettingsPatch): Promise<SettingsView> {
+  if (USE_MOCK) {
+    await delay(250);
+    const updated: string[] = [];
+    Object.entries(patch.controls ?? {}).forEach(([key, value]) => {
+      const row = MOCK_CONTROLS.find(c => c.key === key);
+      if (row) { row.value = value; row.source = 'db'; updated.push(`controls.${key}`); }
+    });
+    Object.entries(patch.secrets ?? {}).forEach(([id, value]) => {
+      const row = MOCK_SECRETS.find(s => s.id === id);
+      // A stored "" is a value: present goes false but the source is still db.
+      if (row) { row.present = value !== ''; row.source = 'db'; updated.push(`secrets.${id}`); }
+    });
+    return {
+      tenant_id: 'demo',
+      controls: MOCK_CONTROLS,
+      secrets: MOCK_SECRETS,
+      checked_at: new Date().toISOString(),
+      updated: updated.sort(),
+    };
+  }
+  return apiFetch<SettingsView>(ENDPOINTS.settings.update(), {
+    method: 'PATCH', body: JSON.stringify(patch),
+  });
 }
 
 // ─── SSE Events (real backend only, mock uses a generator) ───────────────────

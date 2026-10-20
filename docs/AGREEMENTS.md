@@ -18,8 +18,11 @@ Change one only by saying so in the group chat and editing this file in the same
 | **Owner** | Ihsan |
 | **Second owner** | Ali — `muhammadalisajjadakhunzada@gmail.com` *(note the spelling: **akhunzada**, no `d` before the `z`, as Google has it)* |
 
-⚠ **Billing is NOT enabled, and no open billing account exists on any of our three logins.**
-Measured 2026-10-20:
+✅ **Billing is ENABLED, as of 2026-10-20.** Linked via credit account
+`01B200-E38381-6CFD0E`. Blocker B1 is cleared (§7).
+
+None of the four personal accounts we started with was usable — all were `OPEN: False`,
+measured the same day, which is why the credit account was the route and not a convenience:
 
 ```
 mortalihsan@gmail.com      013BD8-152A32-8F6EDE  My Billing Account                           OPEN: False
@@ -28,9 +31,31 @@ ali (akhunzada)            01BBC4-509D95-E840B0  My Billing Account             
 sahreenkm@gmail.com        015092-82619C-C1B37E  My Billing Account                           OPEN: False
 ```
 
-Until one is open and linked, **nothing cloud-side can run**: no Document AI, no Cloud Run
-deploy, no Eventarc, no BigQuery beyond the free tier. This is the single biggest risk to
-Ali's lane and it is why the MVP is local-first by design, not by accident. See §7.
+**What this unblocked, measured the same day.** The backend is deployed and `GET
+/api/health` answers `200`:
+
+| | |
+|---|---|
+| URL | `https://canon-backend-1057093770172.us-central1.run.app` |
+| Revision | `canon-backend-00002-8vb` (`00001-ct6` was the first) |
+| Region | `us-central1` — min-instances 0, max 10, 2 Gi / 2 vCPU |
+| Image | `us-central1-docker.pkg.dev/ps12-canon-hackathon26/backend/canon:8892eb3` |
+
+⚠ **The ~5 s first response is a cold start, not latency.** min-instances is 0, so the
+first request after idle pays for the container coming up. Warm requests are what the
+<30 s NFR is measured against. Calling it latency names the wrong cause, which is exactly
+the class of mistake this file exists to prevent.
+
+**The config layer was proven here, not on a laptop.** The OpenAI key was `PATCH`ed into
+revision `00001-ct6` *through the running service*; revision `00002-8vb` was then built,
+deployed and given the traffic; and health still reported `key present | source=db`. The
+revision carries only `CONFIG_STORE`, `GCP_PROJECT_ID`, `GCP_REGION`, `DOCAI_LOCATION` and
+`REDEPLOY_PROOF` as env vars — **no credential at all.** The key lives in Firestore, was
+set through a running service, and survived a container replacement. That is §6's whole
+argument, demonstrated.
+
+Still local-first where it matters: Document AI, Eventarc and BigQuery are not provisioned,
+and the MVP does not need them. See §2b for how the infrastructure was actually created.
 
 ---
 
@@ -59,6 +84,37 @@ Terraform: `var.region = "us-central1"` and a separate `var.docai_location = "us
 
 ---
 
+## 2b. How the infrastructure was actually created (2026-10-20)
+
+**No document may say the infrastructure was "provisioned with Terraform." It was not.**
+
+The accurate sentence, and the one to use on stage: *infrastructure-as-code is written,
+committed and matches the live resources; provisioning was done directly.* Terraform is not
+installed on the machine that deployed this. `infra/` holds `main.tf`, `provider.tf` and
+`variables.tf`; there is **no `terraform.tfstate` and no `.terraform/`**, and
+`terraform apply` has never run. The live resources were created with `gcloud` and Cloud
+Build (`backend/cloudbuild.yaml`).
+
+This is recorded because the distinction is load-bearing: IaC that has never been applied
+is a *design document that happens to be machine-readable*. It is worth having — it is how
+the three defects below were found — but a claim that it built the environment would be
+false, and drift between it and the live resources will not announce itself.
+
+**Three defects were found and fixed in that IaC before anything was provisioned.** Two of
+them would have been silent in exactly the way §0 of this file describes:
+
+| # | Defect | Why it mattered |
+|---|---|---|
+| 1 | `project_id` defaulted to a project that **does not exist** | the cheap one — it fails loudly on first use |
+| 2 | `OPENAI_API_KEY` was passed to Cloud Run as a **plaintext env var from a Terraform variable** | the key would have landed in Terraform state *and* in the output of `gcloud run services describe`. A credential readable by anyone with describe permission, in a build whose entire §6 argument is that credentials never live in the image or the environment |
+| 3 | **Firestore was missing entirely** | `make_store()` raises on an unknown `CONFIG_STORE`, but with no Firestore database the deployed config store would have fallen back to SQLite on Cloud Run's **ephemeral disk** — so every revision, and every scaled instance, would have started with an empty store. The key would appear to save and then vanish, and the Health page would say so only after the next redeploy |
+
+Defect 2 is the one to remember: the IaC was about to undo the single property the config
+layer exists to provide. `engine/firestore_store.py` and the `google_firestore_database`
+resource both exist now, and §1 records the redeploy that proves it.
+
+---
+
 ## 3. Environment variable names
 
 **Decided: `OPENAI_API_KEY`.** The code reads this name; `.env` must use this name.
@@ -80,7 +136,7 @@ Terraform: `var.region = "us-central1"` and a separate `var.docai_location = "us
 | `CONFIG_DB_PATH` | local SQLite path | local only |
 | `GATE_AUTO_THRESHOLD` | `0.90` | seed for the control; the store owns it after first run |
 | `GATE_REVIEW_THRESHOLD` | `0.60` | same |
-| `ASYNC_PAGE_THRESHOLD` | `15` | route to Doc AI async above this page count |
+| `ASYNC_PAGE_THRESHOLD` | `15` | ⚠ **declared, and nothing reads it.** `async_page_threshold` has exactly one occurrence in the repo — its own `ControlSpec` in `engine/config.py`. Intended to route to Doc AI async above this page count; no router branches on it. Setting it changes nothing today |
 | `GCP_PROJECT_ID` | `ps12-canon-hackathon26` | |
 | `GCP_REGION` | `us-central1` | |
 | `DOCAI_LOCATION` | `us` | the §2 exception |

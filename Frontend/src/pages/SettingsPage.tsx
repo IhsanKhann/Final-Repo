@@ -1,14 +1,80 @@
 import React, { useState, useRef } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   User, Palette, Sliders, Bell, Shield, Database,
   HelpCircle, Upload, Trash2, Check, ArrowLeft, Sun,
-  Moon, Laptop, Info, RefreshCw, Save, RotateCcw, AlertCircle
+  Moon, Laptop, Info, RefreshCw, Save, RotateCcw, AlertCircle,
+  KeyRound
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/AppContext';
+import { getSettings, patchSettings } from '../api/client';
+import type {
+  ConfigSource, ConfigValue, ControlView, SecretView, SettingsPatch,
+} from '../api/types';
 
 type SettingsTab = 'profile' | 'appearance' | 'review' | 'notifications' | 'security' | 'data' | 'help';
+
+// The two controls that decide the three lanes. Pulled out of the generic list because
+// they are the live demonstration of a configurable business rule, and because they are
+// the one pair with an ordering constraint the backend enforces.
+const GATE_KEYS = ['gate_auto_threshold', 'gate_review_threshold'];
+
+// Model routing. Shown together so an operator reads provider and model as one decision.
+const MODEL_KEYS = ['provider', 'model', 'vision_model'];
+
+// Four rows of data, two wire dialects — the provider ids the backend actually knows.
+const PROVIDER_OPTIONS = ['openai', 'openrouter', 'google', 'anthropic'];
+
+/**
+ * What the resolver that answered was. The whole reason the config layer exists is that
+ * an operator can see WHERE the value answering right now came from, so this is never
+ * optional decoration.
+ */
+const SOURCE_COPY: Record<ConfigSource, string> = {
+  session: 'Set for this session only.',
+  db: 'Saved here. This store owns the value.',
+  'env-seed': 'Seeded once from the environment; the store owns it now.',
+  env: 'Read from the environment. Saving here takes ownership of it.',
+  default: 'Nothing is stored — this is the stated default.',
+  'last-known-good': 'The store was unreachable; this is the last value known to work.',
+  unset: 'Never set, by any resolver.',
+};
+
+function SourceBadge({ source }: { source: ConfigSource }) {
+  const muted = source === 'unset' || source === 'default';
+  return (
+    <span
+      title={SOURCE_COPY[source] ?? source}
+      style={{
+        display: 'inline-block',
+        padding: '1px 7px',
+        borderRadius: 999,
+        fontSize: '0.65rem',
+        fontWeight: 700,
+        letterSpacing: '0.02em',
+        border: '1px solid var(--color-border)',
+        background: muted ? 'transparent' : 'var(--color-accent-light)',
+        color: muted ? 'var(--color-text-muted)' : 'var(--color-accent)',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {source}
+    </span>
+  );
+}
+
+/**
+ * Presence and provenance of a credential — never its value. `SecretView` has no value
+ * field on the wire, and `present: false` with `source: 'db'` is a different fact from
+ * `source: 'unset'`: the first was deliberately cleared, the second was never set.
+ */
+function secretStateCopy(s: SecretView): { text: string; tone: 'ok' | 'warn' | 'muted' } {
+  if (s.present) return { text: 'configured', tone: 'ok' };
+  if (s.source === 'unset') return { text: 'not configured', tone: 'muted' };
+  return { text: 'cleared — stored empty, chain stops here', tone: 'warn' };
+}
 
 export function SettingsPage() {
   const { user, updateProfile } = useAuth();
@@ -34,11 +100,21 @@ export function SettingsPage() {
   const [avatarPreview, setAvatarPreview] = useState<string | undefined>(user?.avatarUrl);
   const [avatarError, setAvatarError] = useState<string | null>(null);
 
-  // Review & AI Pipeline Settings State
-  const [threshold, setThreshold] = useState(90);
-  const [model, setModel] = useState('gemini-1.5-pro');
-  const [ocrEngine, setOcrEngine] = useState('document-ai');
-  const [autoLearn, setAutoLearn] = useState(true);
+  // Pipeline controls come from the backend config layer, not from local state. The only
+  // local state is the operator's unsaved edit, keyed by control name: a key absent from
+  // the draft was not touched, so a PATCH only ever carries what actually changed.
+  const queryClient = useQueryClient();
+  const {
+    data: settings,
+    isLoading: settingsLoading,
+    isError: settingsError,
+    error: settingsErrorObj,
+    refetch: refetchSettings,
+    isRefetching: settingsRefetching,
+  } = useQuery({ queryKey: ['settings'], queryFn: getSettings });
+
+  const [controlDraft, setControlDraft] = useState<Record<string, string>>({});
+  const [secretDraft, setSecretDraft] = useState<Record<string, string>>({});
 
   // Notification settings
   const [notifBatchDone, setNotifBatchDone] = useState(true);
@@ -118,12 +194,182 @@ export function SettingsPage() {
     addToast({ type: 'info', title: 'Changes Discarded', message: 'Reverted to last saved profile.' });
   };
 
-  const handleSaveReviewSettings = () => {
-    addToast({
-      type: 'success',
-      title: 'Pipeline Configured',
-      message: `Confidence threshold set to ${threshold}% with ${model}.`,
+  // ─── Pipeline controls & credentials ───────────────────────────────────────
+
+  const saveSettings = useMutation({
+    mutationFn: (patch: SettingsPatch) => patchSettings(patch),
+    onSuccess: (view) => {
+      // The response is a fresh resolution, not an echo of what was written, so it is
+      // the authoritative answer for what the next request will see.
+      queryClient.setQueryData(['settings'], view);
+      setControlDraft({});
+      setSecretDraft({});
+      addToast({
+        type: 'success',
+        title: view.updated.length ? 'Configuration Saved' : 'Nothing Written',
+        message: view.updated.length
+          ? `Wrote ${view.updated.join(', ')}. The next run resolves these from the store.`
+          : 'The store accepted the request but wrote nothing.',
+      });
+    },
+    onError: (err: unknown) => {
+      addToast({
+        type: 'error',
+        title: 'Configuration Rejected',
+        message: err instanceof Error ? err.message : 'The settings endpoint refused the change.',
+      });
+    },
+  });
+
+  const controlsByKey: Record<string, ControlView> = {};
+  (settings?.controls ?? []).forEach(c => { controlsByKey[c.key] = c; });
+
+  /** The string currently in the field: the operator's edit if any, otherwise resolved. */
+  const controlString = (c: ControlView): string =>
+    controlDraft[c.key] ?? (c.value === null || c.value === undefined ? '' : String(c.value));
+
+  const isDirty = (key: string) => Object.prototype.hasOwnProperty.call(controlDraft, key);
+
+  /**
+   * Cast by the shape of the declared default, because that is what the backend casts to.
+   * An empty field stays the empty string and is never coerced to 0 — a stored "" is a
+   * value that stops the resolution chain, and losing that would make a key unclearable.
+   */
+  const castForWire = (c: ControlView, raw: string): ConfigValue => {
+    if (raw.trim() === '') return '';
+    if (typeof c.default === 'number') {
+      const n = Number(raw);
+      return Number.isFinite(n) ? n : raw;
+    }
+    if (typeof c.default === 'boolean') return raw.trim().toLowerCase() === 'true';
+    return raw;
+  };
+
+  const asNumber = (raw: string) => (raw.trim() === '' ? NaN : Number(raw));
+  const autoRaw = controlsByKey['gate_auto_threshold'];
+  const reviewRaw = controlsByKey['gate_review_threshold'];
+  const autoValue = autoRaw ? asNumber(controlString(autoRaw)) : NaN;
+  const reviewValue = reviewRaw ? asNumber(controlString(reviewRaw)) : NaN;
+
+  const outOfUnitRange = (v: number) => !Number.isFinite(v) || v < 0 || v > 1;
+
+  // Confidence is a float 0–1, never a percentage — and the backend raises if the review
+  // threshold sits above the auto threshold, so refuse it here rather than round-trip a 500.
+  const gateError: string | null = !autoRaw || !reviewRaw
+    ? null
+    : outOfUnitRange(autoValue)
+      ? 'The auto threshold must be a number between 0 and 1.'
+      : outOfUnitRange(reviewValue)
+        ? 'The review threshold must be a number between 0 and 1.'
+        : reviewValue > autoValue
+          ? `The review threshold (${reviewValue}) is above the auto threshold (${autoValue}). That ordering would leave no review lane, and the engine refuses it.`
+          : null;
+
+  const pendingCount = Object.keys(controlDraft).length + Object.keys(secretDraft).length;
+
+  const handleSavePipelineSettings = () => {
+    if (gateError) {
+      addToast({ type: 'warning', title: 'Thresholds Invalid', message: gateError });
+      return;
+    }
+    const controls: Record<string, ConfigValue> = {};
+    Object.entries(controlDraft).forEach(([key, raw]) => {
+      const c = controlsByKey[key];
+      if (c) controls[key] = castForWire(c, raw);
     });
+    const secrets: Record<string, string> = { ...secretDraft };
+    if (!Object.keys(controls).length && !Object.keys(secrets).length) {
+      addToast({
+        type: 'info',
+        title: 'Nothing Changed',
+        message: 'No control or credential was edited, so nothing was sent.',
+      });
+      return;
+    }
+    saveSettings.mutate({ controls, secrets });
+  };
+
+  const handleDiscardPipelineSettings = () => {
+    setControlDraft({});
+    setSecretDraft({});
+  };
+
+  /**
+   * Clearing is its own action and sends "" on purpose. An operator who has revoked a key
+   * upstream must be able to stop this store answering with it, and an empty string is the
+   * only value that does that — env would otherwise keep seeding the old one.
+   */
+  const handleClearSecret = (id: string) => {
+    saveSettings.mutate({ controls: {}, secrets: { [id]: '' } });
+  };
+
+  const renderControlRow = (c: ControlView, opts?: { invalid?: boolean }) => {
+    const dirty = isDirty(c.key);
+    const numeric = typeof c.default === 'number';
+    const gate = GATE_KEYS.includes(c.key);
+    const border = opts?.invalid
+      ? '1px solid var(--color-danger, #dc2626)'
+      : dirty
+        ? '1px solid var(--color-accent)'
+        : '1px solid var(--color-border)';
+
+    return (
+      <div
+        key={c.key}
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 180px',
+          gap: 14,
+          alignItems: 'center',
+          padding: '10px 0',
+          borderTop: '1px solid var(--color-border)',
+        }}
+      >
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--color-text-primary)', fontFamily: 'ui-monospace, monospace' }}>
+            {c.key}
+          </div>
+          <div
+            style={{
+              display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center',
+              marginTop: 4, fontSize: '0.7rem', color: 'var(--color-text-muted)',
+            }}
+          >
+            <SourceBadge source={c.source} />
+            <span>env <code>{c.env_var}</code></span>
+            <span>default <code>{c.default === '' ? '""' : String(c.default)}</code></span>
+            {dirty && <span style={{ color: 'var(--color-accent)', fontWeight: 600 }}>unsaved</span>}
+          </div>
+        </div>
+
+        {c.key === 'provider' ? (
+          <select
+            value={controlString(c)}
+            onChange={e => setControlDraft(p => ({ ...p, [c.key]: e.target.value }))}
+            aria-label={c.key}
+            style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border, fontSize: '0.8125rem' }}
+          >
+            {PROVIDER_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
+          </select>
+        ) : (
+          <input
+            type={numeric ? 'number' : 'text'}
+            step={gate ? 0.01 : undefined}
+            min={gate ? 0 : undefined}
+            max={gate ? 1 : undefined}
+            value={controlString(c)}
+            onChange={e => setControlDraft(p => ({ ...p, [c.key]: e.target.value }))}
+            aria-label={c.key}
+            aria-invalid={opts?.invalid || undefined}
+            placeholder="(empty)"
+            style={{
+              width: '100%', padding: '7px 10px', borderRadius: 6, border,
+              fontSize: '0.8125rem', fontFamily: 'ui-monospace, monospace',
+            }}
+          />
+        )}
+      </div>
+    );
   };
 
   const handleResetDemoData = () => {
@@ -691,71 +937,241 @@ export function SettingsPage() {
               </div>
             )}
 
-            {/* 3. REVIEW & MODEL SUB-PAGE */}
+            {/* 3. PIPELINE CONTROLS & CREDENTIALS SUB-PAGE
+                Backed by GET/PATCH /api/settings. Every value is shown with the source
+                that resolved it, and no secret value is ever rendered — SecretView has
+                no value field on the wire, and this page has no place to put one. */}
             {activeTab === 'review' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-                <div>
-                  <h2 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--color-text-primary)' }}>
-                    Review & Model Settings
-                  </h2>
-                  <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginTop: 2 }}>
-                    Tune Gemini model extraction parameters and automated acceptance criteria.
-                  </p>
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: 6 }}>
-                    Reasoning AI Model
-                  </label>
-                  <select
-                    value={model}
-                    onChange={e => setModel(e.target.value)}
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--color-border)', fontSize: '0.875rem' }}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+                  <div>
+                    <h2 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--color-text-primary)' }}>
+                      Pipeline Controls & Credentials
+                    </h2>
+                    <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginTop: 2 }}>
+                      Resolved live by the backend config layer. Each value carries the source
+                      that answered, and a saved value takes effect on the next run — no redeploy.
+                    </p>
+                  </div>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => { void refetchSettings(); }}
+                    disabled={settingsRefetching}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}
                   >
-                    <option value="gemini-1.5-pro">Google Gemini 1.5 Pro (Recommended - Deep document reasoning)</option>
-                    <option value="gemini-1.5-flash">Google Gemini 1.5 Flash (Ultra-fast latency)</option>
-                    <option value="gemini-2.0-flash">Google Gemini 2.0 Flash</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: 6 }}>
-                    OCR & Spatial Table Parser
-                  </label>
-                  <select
-                    value={ocrEngine}
-                    onChange={e => setOcrEngine(e.target.value)}
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--color-border)', fontSize: '0.875rem' }}
-                  >
-                    <option value="document-ai">Google Cloud Document AI (Specialized Table Parser)</option>
-                    <option value="tesseract">Local Tesseract Engine</option>
-                  </select>
-                </div>
-
-                <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 16 }}>
-                  <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>
-                      Auto-Approval Confidence Threshold: <strong style={{ color: 'var(--color-accent)' }}>{threshold}%</strong>
-                    </span>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                      Fields &ge; {threshold}% bypass manual review
-                    </span>
-                  </label>
-                  <input
-                    type="range"
-                    min="50"
-                    max="99"
-                    value={threshold}
-                    onChange={e => setThreshold(Number(e.target.value))}
-                    style={{ width: '100%' }}
-                  />
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid var(--color-border)', paddingTop: 16 }}>
-                  <button className="btn btn-primary btn-sm" onClick={handleSaveReviewSettings}>
-                    Save Model Parameters
+                    <RefreshCw size={14} className={settingsRefetching ? 'animate-spin' : ''} /> Re-resolve
                   </button>
                 </div>
+
+                {settingsLoading && (
+                  <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                    Resolving configuration…
+                  </div>
+                )}
+
+                {settingsError && (
+                  <div
+                    className="card"
+                    style={{
+                      padding: '12px 14px', display: 'flex', gap: 10, alignItems: 'flex-start',
+                      background: 'var(--color-warning-bg)', borderColor: 'var(--color-warning-border)',
+                    }}
+                  >
+                    <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+                    <div style={{ fontSize: '0.8125rem' }}>
+                      <strong>Could not read the configuration.</strong>
+                      <div style={{ color: 'var(--color-text-secondary)', marginTop: 2 }}>
+                        {settingsErrorObj instanceof Error ? settingsErrorObj.message : 'GET /api/settings did not answer.'}
+                        {' '}Nothing was changed.
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {settings && (
+                  <>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
+                      tenant <code>{settings.tenant_id}</code> · resolved{' '}
+                      {new Date(settings.checked_at).toLocaleTimeString()}
+                    </div>
+
+                    {/* ── The gate: two thresholds, three lanes ─────────────────── */}
+                    <section>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Sliders size={15} style={{ color: 'var(--color-accent)' }} />
+                        <h3 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--color-text-primary)' }}>
+                          Ambiguity gate
+                        </h3>
+                      </div>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', marginTop: 4, lineHeight: 1.5 }}>
+                        Confidence is a float between 0 and 1, not a percentage. A field at or above
+                        the auto threshold resolves on its own; a field between the two goes to review;
+                        a field below the review threshold is recorded as <code>missing</code> rather
+                        than guessed. These are stated defaults, not calibrated values.
+                      </p>
+
+                      {autoRaw ? renderControlRow(autoRaw, { invalid: !!gateError }) : null}
+                      {reviewRaw ? renderControlRow(reviewRaw, { invalid: !!gateError }) : null}
+
+                      {gateError && (
+                        <div
+                          style={{
+                            display: 'flex', gap: 8, alignItems: 'flex-start', marginTop: 10,
+                            padding: '9px 11px', borderRadius: 6,
+                            background: 'var(--color-warning-bg)',
+                            border: '1px solid var(--color-warning-border)',
+                            fontSize: '0.75rem', color: 'var(--color-text-primary)',
+                          }}
+                          role="alert"
+                        >
+                          <AlertCircle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+                          <span>{gateError}</span>
+                        </div>
+                      )}
+
+                      {!gateError && Number.isFinite(autoValue) && Number.isFinite(reviewValue) && (
+                        <div style={{ marginTop: 10, fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
+                          auto ≥ {autoValue} · review {reviewValue} – {autoValue} · missing &lt; {reviewValue}
+                        </div>
+                      )}
+                    </section>
+
+                    {/* ── Model routing ─────────────────────────────────────────── */}
+                    <section>
+                      <h3 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--color-text-primary)' }}>
+                        Model routing
+                      </h3>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', marginTop: 4 }}>
+                        A listed provider is not necessarily a reachable one — the Health page reports
+                        whether the chosen pair can actually answer.
+                      </p>
+                      {MODEL_KEYS.map(k => controlsByKey[k]).filter(Boolean).map(c => renderControlRow(c))}
+                    </section>
+
+                    {/* ── Everything else the registry declares ─────────────────── */}
+                    <section>
+                      <h3 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--color-text-primary)' }}>
+                        Run limits & pack selection
+                      </h3>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', marginTop: 4 }}>
+                        Every remaining control the backend declares. Nothing here is invented by the
+                        UI — an unrecognised name is refused by the endpoint before anything is written.
+                      </p>
+                      {settings.controls
+                        .filter(c => !GATE_KEYS.includes(c.key) && !MODEL_KEYS.includes(c.key))
+                        .map(c => renderControlRow(c))}
+                    </section>
+
+                    {/* ── Credentials: presence and provenance only ─────────────── */}
+                    <section>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <KeyRound size={15} style={{ color: 'var(--color-accent)' }} />
+                        <h3 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--color-text-primary)' }}>
+                          Credentials
+                        </h3>
+                      </div>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', marginTop: 4, lineHeight: 1.5 }}>
+                        A stored key is never sent back, so none can be displayed here — only whether
+                        one is present and which resolver owns it. Clearing a key stores an empty
+                        value, which deliberately stops the chain instead of letting the environment
+                        seed the old one again.
+                      </p>
+
+                      {settings.secrets.map(s => {
+                        const state = secretStateCopy(s);
+                        const draft = secretDraft[s.id] ?? '';
+                        const tone = state.tone === 'ok'
+                          ? 'var(--color-success, #16a34a)'
+                          : state.tone === 'warn'
+                            ? 'var(--color-warning, #d97706)'
+                            : 'var(--color-text-muted)';
+                        return (
+                          <div
+                            key={s.id}
+                            style={{
+                              display: 'grid', gridTemplateColumns: '1fr 180px auto', gap: 10,
+                              alignItems: 'center', padding: '10px 0',
+                              borderTop: '1px solid var(--color-border)',
+                            }}
+                          >
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--color-text-primary)', fontFamily: 'ui-monospace, monospace' }}>
+                                {s.id}
+                              </div>
+                              <div
+                                style={{
+                                  display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center',
+                                  marginTop: 4, fontSize: '0.7rem', color: 'var(--color-text-muted)',
+                                }}
+                              >
+                                <SourceBadge source={s.source} />
+                                <span style={{ color: tone, fontWeight: 600 }}>{state.text}</span>
+                                {s.env_var && <span>seed <code>{s.env_var}</code></span>}
+                                {draft !== '' && <span style={{ color: 'var(--color-accent)', fontWeight: 600 }}>unsaved</span>}
+                              </div>
+                            </div>
+
+                            <input
+                              type="password"
+                              value={draft}
+                              autoComplete="new-password"
+                              placeholder={s.present ? 'Replace key…' : 'Paste key…'}
+                              aria-label={`New value for ${s.id}`}
+                              onChange={e => setSecretDraft(p => ({ ...p, [s.id]: e.target.value }))}
+                              style={{
+                                width: '100%', padding: '7px 10px', borderRadius: 6,
+                                border: draft !== '' ? '1px solid var(--color-accent)' : '1px solid var(--color-border)',
+                                fontSize: '0.8125rem',
+                              }}
+                            />
+
+                            <button
+                              className="btn btn-secondary btn-sm"
+                              onClick={() => handleClearSecret(s.id)}
+                              disabled={saveSettings.isPending || (!s.present && s.source === 'unset')}
+                              title="Store an empty value, stopping the resolution chain for this key"
+                              style={{ display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}
+                            >
+                              <Trash2 size={13} /> Clear
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </section>
+
+                    <div
+                      style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        gap: 12, flexWrap: 'wrap',
+                        borderTop: '1px solid var(--color-border)', paddingTop: 16,
+                      }}
+                    >
+                      <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                        {pendingCount === 0
+                          ? 'No unsaved changes.'
+                          : `${pendingCount} unsaved change${pendingCount === 1 ? '' : 's'}. Only edited keys are sent.`}
+                      </span>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          onClick={handleDiscardPipelineSettings}
+                          disabled={pendingCount === 0 || saveSettings.isPending}
+                          style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                        >
+                          <RotateCcw size={13} /> Discard
+                        </button>
+                        <button
+                          className="btn btn-primary btn-sm"
+                          onClick={handleSavePipelineSettings}
+                          disabled={pendingCount === 0 || !!gateError || saveSettings.isPending}
+                          style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                        >
+                          <Save size={13} /> {saveSettings.isPending ? 'Saving…' : 'Save configuration'}
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             )}
 

@@ -111,14 +111,35 @@ Endpoints are listed in `Frontend/src/api/endpoints.ts`. Implement exactly those
 
 ## 4. Agentic AI — where it is, and where it is not
 
-Three agents, each with one narrow inspectable job, inside a state machine whose edges we
-drew (LangGraph, checkpoint per node, fan-out inside Extract and Map, retry with backoff,
-resume rather than restart).
+Three agents are designed, each with one narrow inspectable job. **One is built. Write as
+if you know which.**
 
-- **Extractor** — hard pages only (scans, narrative, broken tables, footnotes) → facts with page + bbox.
-- **Mapper** — a fact + retrieved candidates → chosen field + reason + confidence.
-- **Verifier** — a resolved value + its source snippet → supported or not, + reason. Its
-  rejections are shown as first-class results, never silently dropped.
+- **Mapper** — **BUILT**, `intelligence/mapper.py`, called from `pipeline.py`. A fact +
+  retrieved candidates → chosen field + reason + confidence.
+- **Extractor** — **DESIGNED, not built.** There is no `intelligence/extractor.py`. Hard
+  pages only (scans, narrative, broken tables, footnotes) → facts with page + bbox.
+- **Verifier** — **DESIGNED, not built.** There is no `intelligence/verifier.py`. A
+  resolved value + its source snippet → supported or not, + reason. Its rejections are
+  shown as first-class results, never silently dropped.
+
+**The seam for the other two is already open, so do not build a new one.**
+`intelligence/base.py` returns `Proposal | Unavailable` and never raises; the mapper is its
+first caller, and either remaining agent is a *new caller of an existing contract*. The
+verifier's decision side is wired too: `engine/gate.py` reads `verifier_rejected` and drops
+the field rather than downgrading it. `resolve.py` passes `False` because nothing sets it yet.
+
+**There is no LangGraph here, and do not add it.** The string appears in exactly one place
+in this repo — the banned-import list in `tests/test_no_model_call_in_engine.py`.
+Orchestration is `backend/pipeline.py`: a 258-line deterministic composition root whose
+`process_document()` takes **one document** and whose only job is wiring, because every
+decision belongs in `engine/resolve.py`. That determinism is the point — mapping accuracy
+and unit correctness are scored criteria, and an orchestrator that picks its own route
+takes a different path on stage than it took in rehearsal.
+
+What that costs, and you may not paper over it: **no checkpoint, no resume** — a document
+that fails halfway restarts. Retry and exponential backoff **do** exist, one layer down in
+`intelligence/base.py`, covering the model call and not the pipeline. Fan-out is the seam
+that is real: one document per call, so a job-per-file wrapper needs no change in here.
 
 **Not agents, on purpose:** ingestion, unit conversion, the gate, the feedback write-back,
 the export. If you are tempted to add a fourth agent, the answer is no.
@@ -238,7 +259,7 @@ interface that exists today** — see the table in `README.md` §9. So:
 
 | Question | Answer |
 |---|---|
-| "Where is the AI?" | Three agents — extractor, mapper, verifier — inside a LangGraph state machine. Everything else is deterministic on purpose, because unit correctness is a scored criterion. |
+| "Where is the AI?" | One agent built — the mapper — and two designed behind the same open seam: the extractor and the verifier. Orchestration is `pipeline.py`, 258 deterministic lines, not a graph framework. Everything else is deterministic on purpose, because unit correctness is a scored criterion. |
 | "How do we know it didn't hallucinate this number?" | Click the cell. Page, bounding box, the rule that fired, the model and prompt version, and who approved it. |
 | "Does it work in another domain?" | Second pack, same engine, zero code change — and a test that goes red if a domain word leaks into the engine. |
 | "Does it actually learn?" | Three round reports side by side, with the controlled variables listed. The improvement came from precedents, and 47 fields in round 2 used no model at all. |

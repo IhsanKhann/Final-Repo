@@ -4,8 +4,8 @@
 
 Messy documents in, one clean validated table out, and every number in it points back at
 the page it came from. The meaning comes from the customer's own rulebook, never from us.
-Three agents propose; a deterministic backbone decides; the analyst corrects; the next
-round measurably improves.
+A model proposes; a deterministic backbone decides; the analyst corrects; the correction
+becomes a precedent the next run resolves with no model call at all.
 
 **This file is the standard.** Everything in it is agreed. If your lane doc and this file
 disagree, this file wins. Read this, then read your own lane doc:
@@ -107,7 +107,7 @@ Eight layers, each independently debuggable, each with a typed boundary. Two rai
   │ AUTHORED│   └──────────────────┬───────────────────────┘     │ token     │
   │ MEASURED│   ┌──────────────────▼───────────────────────┐     │ budget    │
   │         │   │ L2  IDENTITY & POLICY                    │     │ round     │
-  │ no code │   │     tenant_id · roles · quota · audit    │     │ reports   │
+  │ no code │   │     tenant_id · audit · roles deferred   │     │ reports   │
   │ no      │   └──────────────────┬───────────────────────┘     │           │
   │ prompts │   ┌──────────────────▼───────────────────────┐     │ wraps     │
   │         │   │ L3  API SEAM          FastAPI :8000      │     │ every     │
@@ -115,11 +115,11 @@ Eight layers, each independently debuggable, each with a typed boundary. Two rai
   │         │   └──────────────────┬───────────────────────┘     │           │
   │ feeds   │   ┌──────────────────▼───────────────────────┐     │           │
   │ L4 ───► │   │ L4  ORCHESTRATION     the spine you drew │     │           │
-  │ L5 ───► │   │     checkpoint per node · fan-out · retry│     │           │
+  │ L5 ───► │   │     pipeline.py · one document per call  │     │           │
   │ L6 ───► │   └──────────────────┬───────────────────────┘     │           │
   │         │   ┌──────────────────▼───────────────────────┐     │           │
   │         │   │ L5  INTELLIGENCE      ★ MAY ONLY PROPOSE │     │           │
-  │         │   │     extractor · mapper · verifier        │     │           │
+  │         │   │     mapper built · 2 more designed       │     │           │
   │         │   └──────────────────┬───────────────────────┘     │           │
   │         │   ┌──────────────────▼───────────────────────┐     │           │
   │         │   │ L6  DETERMINISTIC RESOLUTION  ✓ BACKBONE │     │           │
@@ -141,7 +141,7 @@ Eight layers, each independently debuggable, each with a typed boundary. Two rai
 
 ```
  SOURCES ──► INGEST ──► EXTRACT ──► MAP ──► CONVERT ──► VERIFY ──► GATE ──┐
-  pdf/html    code       agent 1    agent 2   code       agent 3    code  │
+  pdf/html    code       planned    agent 1   code       planned    code  │
   xlsx/csv    parse      hard       picks     units      scores     0.90  │
   narrative   hash       pages      field     rulepack   + reason   0.60  │
                                       ▲                                   ▼
@@ -150,9 +150,12 @@ Eight layers, each independently debuggable, each with a typed boundary. Two rai
                               aliases + precedents
 ```
 
-**Only three stages get an agent.** Ingest and convert are plain code, on purpose:
-parsing is not a judgement call, and "unit conversion correctness" is a scored criterion
-that a lookup table wins 100% and a model wins 97% inexplicably.
+**Only three stages may ever get an agent, and today exactly one of them has one.** The
+mapper is built. The extractor and the verifier are designed, their seams are open, and
+neither is running — see §9 for the line between built and designed. Ingest and convert
+are plain code, on purpose: parsing is not a judgement call, and "unit conversion
+correctness" is a scored criterion that a lookup table wins 100% and a model wins 97%
+inexplicably.
 
 ---
 
@@ -265,6 +268,21 @@ Store: `config(tenant_id, key, value, source, updated_by, updated_at)` and
 `secrets(tenant_id, id, value_enc, source, updated_by, updated_at)`.
 **SQLite locally → Firestore in cloud, one interface, swapped by one env var.**
 
+### This one is proven in cloud, not asserted on a laptop
+
+Measured 2026-10-20 against the deployed service (§7):
+
+1. The OpenAI key was `PATCH`ed into revision `canon-backend-00001-ct6` **through the
+   running service** — no redeploy, no file, no image rebuild.
+2. Revision `canon-backend-00002-8vb` was then built, deployed, and given the traffic.
+3. `GET /api/health` on the new revision still answered `key present | source=db`.
+
+The revision's env vars are `CONFIG_STORE`, `GCP_PROJECT_ID`, `GCP_REGION`,
+`DOCAI_LOCATION` and `REDEPLOY_PROOF` — **no credential of any kind**. The key lives in
+Firestore, it was set through a running service, and it survived a redeploy that replaced
+the container. That sequence is the entire reason this layer exists, and it is the one
+part of the system whose claim is now a measurement rather than a design.
+
 ### Providers: four rows, two dialects, no HTTP in the module
 
 | Provider | Dialect | Why |
@@ -315,15 +333,37 @@ runs: everything with a precedent resolves deterministically, the rest goes to t
 tray, and the Health page says `degraded` with the reason. A run always produces a result
 and an honest account of itself.
 
+### Deployed (2026-10-20)
+
+The backend is live on Cloud Run. `GET /api/health` answers `200`.
+
+| | |
+|---|---|
+| URL | `https://canon-backend-1057093770172.us-central1.run.app` |
+| Revision | `canon-backend-00002-8vb` (`00001-ct6` was the first) |
+| Region | `us-central1` — min-instances 0, max 10, 2 Gi / 2 vCPU |
+| Image | `us-central1-docker.pkg.dev/ps12-canon-hackathon26/backend/canon:8892eb3` |
+
+⚠ **The first response takes about 5 s. That is a cold start, not latency** —
+min-instances is 0, so the first request after an idle period pays for the container
+coming up. Every subsequent request is warm. Anyone who calls this number "latency" on
+stage is describing the wrong thing, and the <30 s NFR is measured warm.
+
+**Infrastructure-as-code is written and matches the live resources, but it has never been
+applied.** Terraform is not installed on the machine that deployed this; `infra/` is
+committed and correct, and the resources were provisioned directly with `gcloud` and Cloud
+Build (`backend/cloudbuild.yaml`). There is no `terraform.tfstate` and no `.terraform/`.
+See `docs/AGREEMENTS.md` §2b for the three defects fixed in that IaC before provisioning.
+
 ---
 
 ## 8. Credentials — who gets what
 
 | Credential | Needed for | Who obtains it | Where it goes |
 |---|---|---|---|
-| `OPENAI_API_KEY` | Inference (mapper, extractor, verifier) | Ihsan — **have it** | `.env` as a seed → promoted into the config DB on first run |
+| `OPENAI_API_KEY` | Inference (the mapper; the two designed agents when they land) | Ihsan — **have it** | `.env` as a seed → promoted into the config DB on first run |
 | `OPENROUTER_API_KEY` | Bring-your-own-model demo | optional, free tier | Settings page at runtime, never a file |
-| GCP project + billing | Everything cloud | Ali | `gcloud config` |
+| GCP project + billing | Everything cloud | Ali | **done** — billing enabled 2026-10-20, `docs/AGREEMENTS.md` §1 |
 | Service account JSON | Cloud Run, GCS, BigQuery, Doc AI | Ali | Secret Manager; locally `GOOGLE_APPLICATION_CREDENTIALS` |
 | `DOCAI_PROCESSOR_ID` | Scanned PDFs | Ali (from `terraform apply`) | config DB, not the image |
 | Bucket + dataset names | Storage targets | Ali (from `terraform apply`) | config DB |
@@ -336,14 +376,20 @@ and an honest account of itself.
 
 | Requirement | MVP | What is real | What is left |
 |---|---|---|---|
-| **Multi-format ingestion** | 85% | CSV/XLSX (pandas, openpyxl), text PDF (pdfplumber, page + bbox), HTML (selectolax), narrative via extractor, **scanned PDF via PyMuPDF rasterize → GPT-4o vision** (no system deps, works on Windows) | Document AI swap-in; >15-page async batch route |
+| **Multi-format ingestion** | 85% | CSV/XLSX (pandas, openpyxl), text PDF (pdfplumber, page + bbox), HTML (selectolax), narrative disclosures (`adapters/narrative.py` — deterministic, not an agent). **Scanned PDF: `pdf_scan.py` is written and tested, but nothing routes to it** — both PDF adapters claim `application/pdf` and only `pdf_text` is in the `ADAPTERS` table | Wire the scan route; a real vision backend; Document AI swap-in; >15-page async batch route |
 | **Intelligent field mapping** | 90% | Deterministic candidate retrieval over pack synonyms + precedents, LLM arbitration only where no candidate wins, reason on every mapping, constrained to declared fields | Embedding retrieval for unlisted terms; 2nd domain pack |
 | **Unit conversion + business rules** | 100% | Table-driven converter whose factors are declared in the pack, with `formula_text`. Edit pack → re-run → column changes | — |
-| **Ambiguity handling** | 100% | Three lanes on stated thresholds (0.90 / 0.60), fitted against the hand-labelled golden set; `missing` shown, never silently dropped; no value constructible without provenance | maker-checker on high-materiality fields |
-| **Feedback-driven learning** | 80% | Rounds 1 & 2: correction writes a precedent, re-run applies it with **no model call**, round report shows the delta | Round 3 promotion into a proposed pack v2 |
+| **Ambiguity handling** | 100% | Three lanes on **stated defaults** (0.90 / 0.60) — not calibrated, and we say so on stage; `missing` shown, never silently dropped; no value constructible without provenance | Calibration, which needs the golden set confirmed; maker-checker on high-materiality fields |
+| **Feedback-driven learning** | 80% | The mechanism: a correction writes a precedent, a re-run applies it with **no model call**, and the round report carries the delta and the six controlled variables. Covered by tests | Running it — **no round has been run yet, so the improvement figure is unmeasured**; round 3 promotion into a proposed pack v2 |
 
-**≈90% of the technical requirements; all four evaluation criteria measurable.** The gap
-is cloud-deployment-shaped, not capability-shaped.
+**≈90% of the technical requirements; all four evaluation criteria measurable.**
+**Measurable, not measured.** Two numbers do not yet exist and we do not quote them:
+**0 of 30 golden-set rows are confirmed, so there is no accuracy figure anywhere in this
+repo**, and no round has been run, so there is no improvement rate either. The scorer
+refuses to print accuracy below 30 confirmed rows precisely so that this gap cannot be
+papered over by accident (`docs/AGREEMENTS.md` §6). The remaining gap is
+confirmation-and-execution-shaped; it is no longer deployment-shaped — the backend is
+live (§7).
 
 ### Deferred on purpose — and the seam that makes each one a drop-in
 
@@ -354,9 +400,13 @@ interface even where there is one implementation.
 | Deferred | Seam that exists from day one | Cost to add later |
 |---|---|---|
 | BigQuery / GCS storage | `Repository` interface; `SqliteRepository` today | a second class, one env var |
-| Firestore config store | `ConfigStore` interface; `SqliteStore` today | Ali's class, one env var |
-| Document AI | `pdf_scan.py` signature `(bytes, mime) -> ExtractedFact[]` | one module body |
-| >15-page async batch | the router already branches on page count | one branch |
+| ~~Firestore config store~~ | **no longer deferred.** `engine/firestore_store.py` exists behind the same `ConfigStore` interface; `CONFIG_STORE=firestore` is what the deployed revision runs | done — it cost exactly the one class and the one env var |
+| **Extractor agent** | `intelligence/base.py` returns `Proposal \| Unavailable`, never raises; the mapper is already one caller of it | a second caller of an existing contract |
+| **Verifier agent** | same contract, plus `gate.py` already reads `verifier_rejected` and drops rather than downgrades the field | a third caller, no gate change |
+| Checkpoint / resume orchestration | `pipeline.py` is one function over plain data, so state is already explicit at the seam | a store for node state, and the edges re-expressed over it |
+| A real vision backend for scans | `pdf_scan.py` takes `vision: VisionFn` and its default returns `Unavailable` — it never guesses and never half-reads a document | one injected function |
+| Document AI | `pdf_scan.py` signature `(bytes, mime) -> ExtractedFact[]`, the same seam | one module body |
+| >15-page async batch | **no seam yet.** `async_page_threshold` (default 15) is declared in `engine/config.py` and has exactly one occurrence in the repo: its own declaration. `page_count` is on every `AdapterResult` and both PDF adapters populate it | the branch itself, plus a caller for the control |
 | Eventarc / Pub/Sub fan-out | the pipeline entry point takes **one document**, never a list | a job wrapper, no engine change |
 | SSE live events | events already written to an `EventLog`; UI polls one hook | one endpoint, one hook |
 | Auth / multi-tenant | `tenant_id` is a column and a parameter **everywhere now**, defaulted to `"demo"`; all calls go through one `apiFetch` | middleware + one header |
@@ -371,19 +421,44 @@ in more than one file, the seam is wrong — fix the seam now, not the feature.
 
 ### Where the "agentic AI" is, precisely
 
-Judges will ask. The answer is three agents with narrow, inspectable jobs, inside a graph
-whose edges we drew:
+Judges will ask, and the honest answer is more specific than "three agents". Three agents
+are **designed**. **One is built.** The distinction is the answer, not a caveat on it:
 
-| Agent | Input | Output | Why it must be an agent |
-|---|---|---|---|
-| **Extractor** | hard pages — scans, narrative, broken tables, footnotes | `ExtractedFact[]` with page + bbox | layout genuinely defeats parsers |
-| **Mapper** | a fact + retrieved candidates from pack & memory | chosen field + `reason` + confidence | recognising *unlisted* terminology is the judgement the problem statement is about |
-| **Verifier** | resolved value + its source snippet | supported / not, + reason | catches the mapper; its rejections are shown, not hidden |
+| Agent | State | Input | Output | Why it must be an agent |
+|---|---|---|---|---|
+| **Mapper** | **BUILT** — `intelligence/mapper.py`, called from `pipeline.py` | a fact + retrieved candidates from pack & memory | chosen field + `reason` + confidence | recognising *unlisted* terminology is the judgement the problem statement is about |
+| **Extractor** | **DESIGNED** — no `intelligence/extractor.py` exists | hard pages — scans, narrative, broken tables, footnotes | `ExtractedFact[]` with page + bbox | layout genuinely defeats parsers |
+| **Verifier** | **DESIGNED** — no `intelligence/verifier.py` exists | resolved value + its source snippet | supported / not, + reason | catches the mapper; its rejections are shown, not hidden |
 
-Plus a **state machine** (LangGraph) with a checkpoint per node, parallel fan-out inside
-Extract and Map, retry with backoff, and resume-not-restart. Not a free-roaming
-orchestrator: one that picks its own route takes a different path on stage than it took in
-rehearsal.
+The reasoning for all three still holds, and **the seam for the other two is already
+open.** `intelligence/base.py` returns `Proposal | Unavailable` and never raises; the
+mapper is simply its first caller. Adding the extractor or the verifier is a new caller of
+a contract that exists, not a new contract — and for the verifier the decision side is
+wired too: `engine/gate.py` already reads `verifier_rejected` and **drops** the field
+rather than downgrading it, with a test that holds it to that. `resolve.py` passes
+`verifier_rejected=False` today because nothing sets it yet.
+
+#### The orchestration is `pipeline.py`, and that is the claim — not a retreat from one
+
+**There is no LangGraph in this repo.** The string appears in exactly one place: the list
+of banned imports in `tests/test_no_model_call_in_engine.py`. What runs instead is
+`backend/pipeline.py` — a 258-line deterministic composition root whose
+`process_document()` takes **one document** and whose only job is wiring, because every
+decision belongs in `engine/resolve.py`.
+
+That determinism is the differentiator, not a shortfall. Unit-conversion correctness and
+field-mapping accuracy are *scored* criteria, and a run we cannot reproduce cannot be
+scored. An orchestrator that picks its own route takes a different path on stage than it
+took in rehearsal; this one takes the same path every time, and the five laws are
+enforceable precisely because the route is ours.
+
+**What that costs, stated plainly:** there is **no checkpointing and no resume.** A
+document that fails halfway restarts from the beginning. Retry and exponential backoff
+**do** exist, but one layer down in `intelligence/base.py`, where they cover the model
+call — 429 backoff, one retry for a non-conforming reply, then `Unavailable`. They do not
+cover the pipeline. Fan-out is the seam that *is* real: one document per call means
+Eventarc, Pub/Sub or a Cloud Run job per file becomes a wrapper around this function
+rather than a change to it.
 
 ---
 
@@ -396,6 +471,10 @@ pack only   analyst    pack +      smaller    promoted    gate ALLOWED
    │           │          │           │          │
    └───────────┴──► precedents ───────┴──► promotions ──► proposed pack v2
 ```
+
+⚠ **This is the mechanism, which exists and is tested. It has not been run yet**, so every
+number below is an expectation and not a measurement. The round report is what will turn
+them into measurements, and until it has, the UI shows no delta rather than a plausible one.
 
 - Round 1 runs on the pack alone. Expect ~22% flagged on `ps06`.
 - Each correction writes one precedent, tagged `ANALYST` — ranks above a model proposal,
@@ -421,11 +500,17 @@ pack only   analyst    pack +      smaller    promoted    gate ALLOWED
 
 1. **Show the pack.** "This is the customer's rulebook, with a page citation on every rule.
    We did not write it, and the engine has never heard of a bank."
-2. Drop in two rate sheets that report the same thing differently, plus a scanned PDF and a spreadsheet.
-3. **Gold table:** one schema, four sources, units aligned.
+2. Drop in two rate sheets that report the same thing differently, plus a spreadsheet and
+   a narrative disclosure. **Not a scanned PDF** — nothing routes to `pdf_scan` yet (§9),
+   and even once it does, that path rasterizes and reports `Unavailable`, which sends the
+   fields to review. It does not read the scan. Do not demo a capability we do not have.
+3. **Gold table:** one schema, three sources, units aligned.
 4. **Click a cell.** Evidence opens on page 4, box highlighted, with the rule that fired and the reason.
 5. **Open the tray.** Fix one mapping. "Watch what that does."
-6. **Re-run.** Round 2 beside round 1: accuracy up, tray smaller, cost down, 47 fields resolved with no model call.
+6. **Re-run.** Round 2 beside round 1: the tray is smaller, the cost is lower, and the
+   fields the analyst corrected resolve **with no model call at all**. Read the counters
+   off the round report live — do not pre-announce a figure, because no round has been run
+   yet and there is no confirmed golden set to put an accuracy number on (§9).
 7. Close on the effort-saved counter and the revenue streams.
 
 Steps 1, 4 and 6 are the ones nobody else in the room will have. Protect the time.
@@ -440,9 +525,18 @@ rulebook again from zero.
 
 | Tier | Price | Pages/mo | Gets | Enforced in MVP |
 |---|---|---|---|---|
-| Free | $0 | 100 | 1 pack, review console, CSV export | **yes — page quota at ingest** |
+| Free | $0 | 100 | 1 pack, review console, CSV export | **no** — see below |
 | Pro | $499/mo | 5,000 | Unlimited packs, API, BigQuery export, 3 seats, round reports | slide only |
 | Enterprise | from $4k/mo | unlimited | Own schema registry, SSO, maker-checker, audit export, replay, SLA | slide only |
+
+**Nothing in this table is enforced in code. All three rows are slide only.** There is no
+quota, tier, subscription or plan logic anywhere in the repository: grep `backend/` for
+those words and the only hits are the word *quotation* in `engine/packs.py` and the word
+*tier* as a deposit-ladder term inside the customer's pack. The frontend has one hit, a
+string in an error banner. The counter a page quota would need already exists —
+`page_count` is a field on every `AdapterResult` and both PDF adapters populate it — so
+this is a metering rule we have not written, not a measurement we cannot take. Saying
+otherwise on stage would be the one kind of claim this product exists to refuse.
 
 **Five revenue streams:** subscription · usage overage ($0.04/page) · **pack authoring**
 (paid onboarding where we co-author pack v1 from their documents — the stickiest part) ·

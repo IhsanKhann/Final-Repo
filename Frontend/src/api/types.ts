@@ -294,3 +294,73 @@ export interface HomeStats {
   mapping_accuracy_delta: number;
   recent_batches: Batch[];
 }
+
+// ─── Settings: the config layer ─────────────────────────────────────────────
+// APPENDED, not a change to the contract above. These mirror the wire shapes in
+// `backend/api/settings.py` (SettingsView / ControlView / SecretView / SettingsPatch)
+// one-for-one, for the `GET /api/settings` · `PATCH /api/settings` pair that README
+// section 4 already lists. Nothing above this comment was touched.
+//
+// `SecretView` has no value field, and that is deliberate on both sides of the wire:
+// the backend has no code path that could echo a credential, so neither does the UI.
+
+/**
+ * Where the value answering right now actually came from — the thing the Settings page
+ * exists to show. Mirrors `Source` in `backend/engine/config.py`.
+ *
+ * Note `env` and `env-seed` are not the same fact: a control may chain to env freely,
+ * while for a secret env is a one-time seed that the store then owns.
+ */
+export type ConfigSource =
+  | 'session'
+  | 'db'
+  | 'env-seed'
+  | 'env'
+  | 'default'
+  | 'last-known-good'
+  | 'unset';
+
+/** A resolved control value. Shown, because a policy decision is not a credential. */
+export interface ControlView {
+  key: string;
+  value: ConfigValue | null;
+  source: ConfigSource;
+  env_var: string;
+  default: ConfigValue | null;
+}
+
+/**
+ * A credential's presence and provenance — never its value.
+ *
+ * `present: false` with `source: 'db'` means an operator deliberately cleared it, and a
+ * stored "" stops the resolution chain exactly like a real key does. That is a different
+ * fact from `source: 'unset'`, which means nothing has ever been written.
+ */
+export interface SecretView {
+  id: string;
+  present: boolean;
+  source: ConfigSource;
+  env_var?: string | null;
+}
+
+export type ConfigValue = string | number | boolean;
+
+export interface SettingsView {
+  tenant_id: string;
+  controls: ControlView[];
+  secrets: SecretView[];
+  checked_at: string;
+  /** Names the PATCH actually wrote, e.g. `controls.gate_auto_threshold`. */
+  updated: string[];
+}
+
+/**
+ * Controls and secrets are separate on the wire because they resolve differently, and
+ * the caller has to say which it means. Only keys declared in `CONTROLS` / `SECRETS`
+ * (`backend/engine/config.py`) are accepted — `unknown_keys()` returns a typed 400 for
+ * anything else rather than silently dropping it.
+ */
+export interface SettingsPatch {
+  controls?: Record<string, ConfigValue>;
+  secrets?: Record<string, string>;
+}

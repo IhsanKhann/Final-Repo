@@ -1,0 +1,43 @@
+# What NOT to upload to Cloud Build. Without this the build context includes
+# Frontend/node_modules (hundreds of MB) and the upload dominates the build — which on a
+# slow connection is the difference between a 3-minute deploy and a failed one.
+
+.git/
+.gitignore
+
+# Frontend is deployed separately as a static build; the backend image needs none of it.
+Frontend/
+
+# Local stores, caches, virtualenvs
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+backend/.data/
+*.db
+*.sqlite*
+
+# Secrets never reach a build context
+.env
+*.env
+!.env.example
+*service-account*.json
+*credentials*.json
+
+# Terraform state and plans
+infra/.terraform/
+*.tfstate
+*.tfstate.*
+tf.plan
+
+# Generated demo documents are rebuilt by make_documents.py; the image does not need them
+backend/eval/generated/
+
+# Docs and planning material
+docs/
+*.md
+!backend/packs/*.md
+sample.zip

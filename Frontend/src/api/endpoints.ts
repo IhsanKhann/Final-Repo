@@ -51,6 +51,13 @@ export const ENDPOINTS = {
     get: () => `${BASE}/api/health`,
   },
 
+  // Settings — the config layer. GET returns every resolved value WITH its source;
+  // PATCH routes controls and secrets to their two deliberately different resolvers.
+  settings: {
+    get: () => `${BASE}/api/settings`,
+    update: () => `${BASE}/api/settings`,
+  },
+
   // Home stats
   home: {
     stats: () => `${BASE}/api/home/stats`,
