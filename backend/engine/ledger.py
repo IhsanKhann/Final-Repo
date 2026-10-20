@@ -96,11 +96,21 @@ class Ledger(ABC):
     def latest_for_document(self, document_id: str, tenant_id: str = "demo") -> list[LedgerEntry]: ...
 
     @abstractmethod
+    def by_mapping(self, mapping_id: str, tenant_id: str = "demo") -> list[LedgerEntry]: ...
+
+    @abstractmethod
     def verify_chain(self, tenant_id: str = "demo") -> tuple[bool, str | None]: ...
 
 
 def _default_db_path() -> Path:
-    return Path(__file__).resolve().parent.parent / ".data" / "ledger.db"
+    import os
+
+    # Overridable so a test gets its own ledger instead of accumulating into the dev one,
+    # which would make every count depend on what was run before it.
+    return Path(
+        os.environ.get("LEDGER_DB_PATH")
+        or Path(__file__).resolve().parent.parent / ".data" / "ledger.db"
+    )
 
 
 class SqliteLedger(Ledger):
@@ -137,6 +147,8 @@ class SqliteLedger(Ledger):
                 CREATE INDEX IF NOT EXISTS ledger_cell
                     ON ledger (tenant_id, document_id, target_field, version);
                 CREATE INDEX IF NOT EXISTS ledger_run ON ledger (tenant_id, run_id);
+                CREATE INDEX IF NOT EXISTS ledger_mapping
+                    ON ledger (tenant_id, mapping_id);
                 """
             )
 
@@ -204,6 +216,20 @@ class SqliteLedger(Ledger):
                 "  GROUP BY target_field"
                 ") ORDER BY target_field ASC",
                 (tenant_id, document_id),
+            ).fetchall()
+        return [LedgerEntry.model_validate_json(r["payload"]) for r in rows]
+
+    def by_mapping(self, mapping_id: str, tenant_id: str = "demo") -> list[LedgerEntry]:
+        """Every version recorded for one mapping, newest first.
+
+        Newest first because the caller almost always wants the current state of a cell;
+        the older versions are the history behind it.
+        """
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT payload FROM ledger WHERE tenant_id=? AND mapping_id=? "
+                "ORDER BY seq DESC",
+                (tenant_id, mapping_id),
             ).fetchall()
         return [LedgerEntry.model_validate_json(r["payload"]) for r in rows]
 

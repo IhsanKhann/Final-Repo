@@ -34,8 +34,10 @@ from backend.api.repository import Repository
 from backend.engine import packs as packs_module
 from backend.engine import render as render_module
 from backend.engine.config import DEFAULT_TENANT, ConfigStore, control
+from backend.engine.ledger import Ledger, LedgerEntry, SqliteLedger
 from backend.engine.contracts import (
     AgentEvent,
+    Authority,
     Batch,
     BatchFile,
     BatchStats,
@@ -58,6 +60,7 @@ from backend.engine.contracts import (
 from backend.eval import score as score_module
 from backend.memory.feedback import apply_patch
 from backend.memory.precedents import PrecedentStore, SqlitePrecedentStore
+from backend.pipeline import process_document
 
 #: Formats we can accept an upload of. A file outside this set is marked unsupported on
 #: that document and the batch continues (CLAUDE.md 6).
@@ -71,6 +74,19 @@ _SUFFIX_TO_TYPE = {
     ".htm": "html",
     ".pdf": "pdf",
     ".txt": "txt",
+}
+
+#: Suffix -> the media type the adapter package dispatches on. Kept here rather than
+#: guessed from the OS mimetypes table, which disagrees with itself across platforms and
+#: would make a document readable on one machine and unsupported on another.
+_SUFFIX_TO_MEDIA_TYPE = {
+    ".csv": "text/csv",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".xls": "application/vnd.ms-excel",
+    ".html": "text/html",
+    ".htm": "text/html",
+    ".pdf": "application/pdf",
+    ".txt": "text/plain",
 }
 
 
@@ -93,11 +109,13 @@ class PersistedService:
         event_log: EventLog,
         config_store: ConfigStore | None = None,
         precedents: PrecedentStore | None = None,
+        ledger: Ledger | None = None,
     ) -> None:
         self._repo = repository
         self._events = event_log
         self._config_store = config_store
         self._precedents = precedents or SqlitePrecedentStore()
+        self._ledger = ledger or SqliteLedger()
 
     # -- packs -----------------------------------------------------------------
 
@@ -157,45 +175,170 @@ class PersistedService:
         *,
         tenant_id: str = DEFAULT_TENANT,
     ) -> Batch:
-        """Persist the upload and return the batch. Processing is reported, never implied.
+        """Accept the upload, then actually run it: extract, map, resolve, persist.
 
-        The batch comes back `uploading`/`pending`, and an event says plainly whether
-        anything can process it yet. Returning `ready`/`done` with no pipeline behind it
-        would be a lie the demo would then repeat on stage.
+        Processing happens per document, through `pipeline.process_document`, which takes
+        ONE document -- so moving this to a Cloud Run job or an Eventarc handler is a
+        wrapper around the same loop rather than a rewrite (CLAUDE.md 6b).
+
+        A file that cannot be read marks THAT document and the batch continues. One bad
+        file never ends a run, and the reason is recorded on the document and as an event
+        rather than raised.
         """
         pack = self._active_pack()
+        seam = self._inference_seam(tenant_id)
         batch_id = f"batch-{uuid.uuid4().hex[:12]}"
         stamp = _now()
 
+        # The batch row goes in BEFORE any document is read, and that ordering is
+        # load-bearing. Written last, a crash part-way through leaves documents and
+        # mappings whose parent batch does not exist: invisible to every per-batch screen,
+        # yet still counted by the tenant-wide queries behind the review queue and the home
+        # stats. The tray then shows rows a reviewer cannot open. Written first, a crash
+        # leaves a batch that is visibly incomplete, which is a state someone can act on.
+        self._repo.upsert_batch(
+            Batch(
+                id=batch_id,
+                name=f"Upload {stamp[:19]}",
+                pack_id=pack.id if pack else payload.pack_id,
+                pack_name=pack.name if pack else payload.pack_id,
+                files=[],
+                stage="ingesting",
+                status="running",
+                created_at=stamp,
+                updated_at=stamp,
+            ),
+            tenant_id=tenant_id,
+        )
+
         batch_files: list[BatchFile] = []
+        total_fields = auto = review = missing = not_reportable = 0
+        model_calls = precedents_applied = 0
+        read_any = False
+
         for index, upload in enumerate(files):
             suffix = _suffix(upload.name)
-            supported = suffix in _ACCEPTED_SUFFIXES
             document_id = f"doc-{uuid.uuid4().hex[:12]}"
-            batch_files.append(
-                BatchFile(
-                    id=f"file-{index}-{uuid.uuid4().hex[:8]}",
-                    name=upload.name,
-                    type=_SUFFIX_TO_TYPE.get(suffix, suffix.lstrip(".") or "unknown"),
-                    size=upload.size_bytes,
-                    status="ready" if supported else "unsupported",
-                    document_id=document_id if supported else None,
-                    error=None if supported else f"no adapter handles {suffix or 'this file'}",
-                )
-            )
-            if supported:
-                self._repo.upsert_document(
-                    Document(
-                        id=document_id,
-                        batch_id=batch_id,
+            file_id = f"file-{index}-{uuid.uuid4().hex[:8]}"
+            declared_type = _SUFFIX_TO_TYPE.get(suffix, suffix.lstrip(".") or "unknown")
+
+            if suffix not in _ACCEPTED_SUFFIXES:
+                batch_files.append(
+                    BatchFile(
+                        id=file_id,
                         name=upload.name,
-                        type=_SUFFIX_TO_TYPE.get(suffix, "txt"),
-                        file_url="",
-                        status="ready",
-                        created_at=stamp,
+                        type=declared_type,
+                        size=upload.size_bytes,
+                        status="unsupported",
+                        error=f"no adapter handles {suffix or 'this file'}",
+                    )
+                )
+                continue
+
+            document = Document(
+                id=document_id,
+                batch_id=batch_id,
+                name=upload.name,
+                type=_SUFFIX_TO_TYPE.get(suffix, "txt"),
+                file_url="",
+                status="processing",
+                created_at=stamp,
+            )
+            self._repo.upsert_document(document, tenant_id=tenant_id)
+
+            media_type = _SUFFIX_TO_MEDIA_TYPE.get(suffix, "application/octet-stream")
+            file_status: str = "done"
+            error: str | None = None
+
+            try:
+                from backend.adapters import extract_document
+
+                extracted = extract_document(
+                    upload.content, media_type, document_id=document_id
+                )
+            except Exception as exc:  # containment: this document only
+                extracted = None
+                file_status, error = "error", f"{type(exc).__name__}: {exc}"
+
+            if extracted is not None and extracted.status != "done":
+                file_status = "unsupported" if extracted.status == "unsupported" else "error"
+                error = extracted.error or extracted.status
+
+            if extracted is not None and extracted.status == "done":
+                if pack is None:
+                    file_status, error = "error", "no pack is loadable, so no run can be governed"
+                else:
+                    read_any = True
+                    outcome = process_document(
+                        document_id,
+                        extracted.facts,
+                        pack=pack,
+                        precedents=self._precedents,
+                        seam=seam,
+                        tenant_id=tenant_id,
+                        document_name=upload.name,
+                    )
+                    for resolution in outcome.resolutions:
+                        self._repo.upsert_mapping(resolution.mapping, tenant_id=tenant_id)
+                        self._record_evidence(
+                            resolution, batch_id=batch_id, pack=pack, tenant_id=tenant_id
+                        )
+                        total_fields += 1
+                        if resolution.mapping.status in ("auto", "approved"):
+                            auto += 1
+                        elif resolution.mapping.status == "review":
+                            review += 1
+                        else:
+                            missing += 1
+                    not_reportable += len(outcome.not_reportable)
+                    model_calls += outcome.counters.model_calls_made
+                    precedents_applied += outcome.counters.precedents_applied
+
+                    self._events.emit(
+                        batch_id,
+                        new_event(
+                            agent="mapper",
+                            step="mapped",
+                            status="done",
+                            message=(
+                                f"{upload.name}: {len(outcome.resolutions)} field(s) "
+                                f"resolved, {len(outcome.not_reportable)} label(s) were "
+                                f"not reportable fields, {outcome.counters.model_calls_made} "
+                                "model call(s)"
+                            ),
+                            file_id=file_id,
+                        ),
+                        tenant_id=tenant_id,
+                    )
+
+            if error:
+                self._events.emit(
+                    batch_id,
+                    new_event(
+                        agent="ingest",
+                        step="unreadable",
+                        status="error",
+                        message=f"{upload.name}: {error}",
+                        file_id=file_id,
                     ),
                     tenant_id=tenant_id,
                 )
+
+            self._repo.upsert_document(
+                document.model_copy(update={"status": file_status}), tenant_id=tenant_id
+            )
+            batch_files.append(
+                BatchFile(
+                    id=file_id,
+                    name=upload.name,
+                    type=declared_type,
+                    size=upload.size_bytes,
+                    status=file_status,
+                    progress=100,
+                    document_id=document_id,
+                    error=error,
+                )
+            )
 
         batch = Batch(
             id=batch_id,
@@ -203,40 +346,133 @@ class PersistedService:
             pack_id=pack.id if pack else payload.pack_id,
             pack_name=pack.name if pack else payload.pack_id,
             files=batch_files,
-            stage="uploading",
-            status="pending",
+            # `ready` only if something was actually read. A batch where every file failed
+            # reports `failed`, because a green batch containing nothing is the kind of
+            # result a demo repeats without noticing.
+            stage="ready" if read_any else "failed",
+            status="done" if read_any else "failed",
             created_at=stamp,
-            updated_at=stamp,
+            updated_at=_now(),
             stats=BatchStats(
                 total_files=len(batch_files),
-                total_fields=0,
-                auto_approved=0,
-                needs_review=0,
-                missing=0,
+                total_fields=total_fields,
+                auto_approved=auto,
+                needs_review=review,
+                missing=missing,
             ),
         )
         self._repo.upsert_batch(batch, tenant_id=tenant_id)
 
-        self._events.append(
+        self._events.emit(
+            batch_id,
             new_event(
                 agent="ingest",
-                step="accepted",
-                status="done",
+                step="complete",
+                status="done" if read_any else "error",
                 message=(
-                    f"{len(batch_files)} file(s) stored. "
-                    + (
-                        f"Pack {pack.id} is loaded."
-                        if pack
-                        else "No pack is loadable, so no run can be governed."
-                    )
-                    + " Extraction is not wired in this build, so no field has been mapped"
-                    " yet and no count below is a measurement."
+                    f"{len(batch_files)} file(s): {total_fields} field(s) resolved "
+                    f"({auto} auto, {review} review, {missing} missing), "
+                    f"{not_reportable} label(s) not reportable, "
+                    f"{model_calls} model call(s), "
+                    f"{precedents_applied} precedent(s) applied"
                 ),
             ),
-            batch_id=batch_id,
             tenant_id=tenant_id,
         )
         return batch
+
+    def _record_evidence(
+        self,
+        resolution,
+        *,
+        batch_id: str,
+        pack: packs_module.Pack,
+        tenant_id: str,
+    ) -> None:
+        """Append one append-only ledger entry per cell. This is the audit story.
+
+        Without this the ledger is an empty table and "click the cell to see the page, the
+        rule that fired, the model and who approved it" has nothing behind it. It also
+        carries the authority, which is the only place `patch_mapping` can later learn
+        whether a field came from the pack or from a model -- `Mapping` has no authority
+        field, because types.ts does not declare one.
+
+        Never raises: losing an audit row must not fail a run that otherwise succeeded,
+        and the mapping itself is already persisted by the time we get here.
+        """
+        mapping = resolution.mapping
+        try:
+            self._ledger.append(
+                LedgerEntry(
+                    tenant_id=tenant_id,
+                    run_id=batch_id,
+                    document_id=mapping.document_id,
+                    mapping_id=mapping.id,
+                    source_label=mapping.source_label,
+                    target_field=mapping.target_field,
+                    raw_value=mapping.raw_value,
+                    raw_unit=mapping.raw_unit,
+                    value=mapping.value,
+                    unit=mapping.unit,
+                    status=mapping.status,
+                    confidence=mapping.confidence,
+                    authority=resolution.authority.name if resolution.authority else None,
+                    conversion_rule_id=(
+                        mapping.conversion.rule_id if mapping.conversion else None
+                    ),
+                    formula_text=(
+                        mapping.conversion.formula_text if mapping.conversion else None
+                    ),
+                    source_location=(
+                        mapping.source_location.model_dump(mode="json")
+                        if mapping.source_location
+                        else None
+                    ),
+                    pack_id=pack.id,
+                    pack_version=pack.version,
+                    reason=mapping.reason,
+                )
+            )
+        except Exception:
+            pass
+
+    def _prior_authority(self, mapping_id: str, tenant_id: str) -> Authority | None:
+        """What decided this field, read from the ledger.
+
+        `patch_mapping` needs it so that accepting a field the pack already resolved does
+        not write a precedent: a pack rule outranks a precedent, so such a precedent could
+        never be the thing that resolved the field, and counting it would inflate
+        precedents_applied with entries that did no work.
+        """
+        try:
+            for entry in self._ledger.by_mapping(mapping_id, tenant_id=tenant_id):
+                if entry.authority:
+                    return Authority[entry.authority]
+        except Exception:
+            pass
+        return None
+
+    def _inference_seam(self, tenant_id: str):
+        """A configured Seam, or None when no key resolves.
+
+        Returning None rather than a Seam that will fail keeps the no-key path free of a
+        pointless request per field: with nothing configured the deterministic routes
+        still resolve and the rest goes to review, which is what README section 7
+        promises. Built lazily, never at import.
+        """
+        try:
+            from backend.engine.config import SECRETS, secret_for
+            from backend.intelligence.base import Seam
+
+            provider = str(control("provider", store=self._config_store).value or "")
+            secret_id = f"{provider}_api_key"
+            if secret_id not in SECRETS:
+                return None
+            if not (secret_for(secret_id, store=self._config_store, tenant_id=tenant_id).value or ""):
+                return None
+            return Seam.from_config(store=self._config_store, tenant_id=tenant_id)
+        except Exception:
+            return None
 
     def cancel_batch(self, batch_id: str, *, tenant_id: str = DEFAULT_TENANT) -> Batch | None:
         batch = self._repo.get_batch(batch_id, tenant_id=tenant_id)
@@ -371,7 +607,12 @@ class PersistedService:
         if mapping is None:
             return None
 
-        outcome = apply_patch(mapping, payload, self._precedents)
+        outcome = apply_patch(
+            mapping,
+            payload,
+            self._precedents,
+            prior_authority=self._prior_authority(mapping_id, tenant_id),
+        )
         self._repo.upsert_mapping(outcome.response.mapping, tenant_id=tenant_id)
         self._repo.append_feedback(outcome.event, tenant_id=tenant_id)
         return outcome.response
@@ -394,7 +635,10 @@ class PersistedService:
         accepted: list[Mapping] = []
         for mapping in candidates:
             outcome = apply_patch(
-                mapping, MappingPatchPayload(action="accept"), self._precedents
+                mapping,
+                MappingPatchPayload(action="accept"),
+                self._precedents,
+                prior_authority=self._prior_authority(mapping.id, tenant_id),
             )
             self._repo.upsert_mapping(outcome.response.mapping, tenant_id=tenant_id)
             self._repo.append_feedback(outcome.event, tenant_id=tenant_id)

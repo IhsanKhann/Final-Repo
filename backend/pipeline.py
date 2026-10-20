@@ -160,6 +160,10 @@ class DocumentOutcome:
     document_id: str
     resolutions: list[resolve_module.Resolution] = dataclass_field(default_factory=list)
     counters: RoundCounters = dataclass_field(default_factory=RoundCounters)
+    #: Labels that are not reportable fields at all -- a column header, a product name, a
+    #: page title. Counted, never queued. See `_is_reportable` for why this is a count and
+    #: not a status.
+    not_reportable: list[str] = dataclass_field(default_factory=list)
     unreadable_reason: str | None = None
 
     @property
@@ -199,13 +203,29 @@ def process_document(
         match = pack_match_for(qualified.source_label, pack)
         proposal = None
         if match is None:
-            proposal = propose_for_fact(
+            mapped = propose_for_fact(
                 qualified,
                 directory,
                 seam=seam,
                 tenant_id=tenant_id,
                 document_name=document_name,
-            ).outcome
+            )
+            proposal = mapped.outcome
+
+            # Not a reportable field at all. `outcome is None` is the mapper saying the
+            # pack declares nothing this label could even be a candidate for -- a column
+            # header, a product name, a page title. That is a different claim from "this
+            # is data and I refuse to guess", and conflating the two is what buries the
+            # one real ambiguity under hundreds of non-fields and makes the effort metric
+            # argue against us.
+            #
+            # It is deliberately NOT a fourth status. `MappingStatus` is fixed by
+            # types.ts, and Law V is about fields that ARE data. So a non-field produces
+            # no Mapping row at all and is reported as a count. Nothing reaches the tray
+            # that a reviewer cannot act on.
+            if proposal is None:
+                outcome.not_reportable.append(qualified.source_label)
+                continue
 
         resolution = resolve_module.resolve(
             qualified,
