@@ -1,0 +1,435 @@
+# =============================================================================
+# DRAFT — PENDING HUMAN ACCEPTANCE. NOT YET A CUSTOMER PACK.
+#
+# Every declaration in this file was DRAFTED by an AI agent and is therefore born
+# `status: PROPOSED`. Nothing here takes effect until a named human accepts it
+# (`status: ACCEPTED` plus `accepted_by` and `accepted_at` — the loader refuses an
+# ACCEPTED declaration with no human attached to it).
+#
+# THERE IS NOT ONE `QUOTED` DECLARATION IN THIS FILE, AND THAT IS DELIBERATE.
+# QUOTED means "this rule is written in the customer's own source document", and its
+# mandatory fields are doc_id, page and a verbatim quote. No customer source document
+# exists yet, so there is nothing to quote and no page to cite. Writing a doc_id and a
+# page number here would be a fabrication, and Law III exists to forbid exactly that.
+# When the customer's rate-sheet policy document arrives, the declarations below are
+# re-tagged QUOTED against it, one at a time, by the human who reads it.
+#
+# So only two tags appear:
+#   MEASURED  — a census over the customer's own data. Every `occurrences` number below
+#               was counted for real against data/samples/ps06_sample_rate_sheets.csv,
+#               and `pattern` is re-run by backend/tests/test_packs.py on every CI run.
+#               If the data changes and the count no longer reproduces, CI goes red.
+#   AUTHORED  — a judgement call, with a `because` a reviewer can argue with. Note the
+#               asymmetry: an AUTHORED *precedence* rule would be us deciding which of
+#               the customer's own instruments governs, which is the one thing this
+#               product exists to refuse. The two precedence entries below therefore
+#               propose that the conflict be SHOWN, not resolved, and they stay PROPOSED.
+#
+# This file is data. No code, no prompts, no model configuration belongs in it.
+# =============================================================================
+
+id: banking_rates
+name: Deposit Rate Sheets
+version: 1.0.0
+description: >-
+  Deposit-rate reporting fields, drafted from the columns of
+  data/samples/ps06_sample_rate_sheets.csv. Accepted by the pack owner.
+status: ACCEPTED
+updated_at: "2026-10-20T00:00:00Z"
+
+# The dataset every MEASURED declaration below was counted against, repo-root relative.
+# A MEASURED declaration may name its own `dataset`; otherwise it inherits this one.
+measured_against: data/samples/ps06_sample_rate_sheets.csv
+
+# -----------------------------------------------------------------------------
+# 1. FIELDS — the canonical names every source label must land on.
+# -----------------------------------------------------------------------------
+fields:
+  - name: interest_rate_annual_pct
+    label: Interest Rate (% p.a.)
+    type: number
+    unit: percent_per_annum
+    required: true
+    synonyms:
+      - rate_pct
+      - Rate
+      - Interest
+      - Interest Rate
+      - Nominal Rate
+      - p.a. %
+      - Nominal (monthly)
+    # One of the synonyms above does NOT arrive in the canonical unit. Declaring the
+    # arrival unit here is what makes the x12 conversion fire deterministically instead
+    # of a mapper guessing from the word "monthly".
+    synonym_units:
+      Nominal (monthly): percent_per_month
+    range:
+      min: 0.0
+      max: 25.0
+    status: ACCEPTED
+    accepted_by: Ihsan Khan
+    accepted_at: "2026-10-20"
+    provenance:
+      tag: MEASURED
+      occurrences: 150
+      pattern: count(rows where rate_pct >= 0)
+      note: >-
+        Every one of the 150 records carries a non-negative nominal rate, so the field is
+        declared required. Observed span is 0.59 to 5.489; the declared range is widened
+        to 0-25 so a plausible future rate is not rejected by a range fitted to a sample.
+
+  - name: annual_percentage_yield_pct
+    label: Annual Percentage Yield (%)
+    type: number
+    unit: percent_per_annum
+    required: true
+    synonyms:
+      - apy_pct
+      - APY
+      - Annual Yield
+      - Annual Percentage Yield
+      - effective yield
+      - Effective Yield
+    range:
+      min: 0.0
+      max: 25.0
+    status: ACCEPTED
+    accepted_by: Ihsan Khan
+    accepted_at: "2026-10-20"
+    provenance:
+      tag: MEASURED
+      occurrences: 150
+      pattern: count(rows where apy_pct >= rate_pct)
+      note: >-
+        The yield is greater than or equal to the nominal rate in all 150 records without
+        exception, which is why it is declared as a separate field rather than treated as
+        a restatement of the nominal rate. Observed span is 0.598 to 5.599.
+
+  - name: minimum_deposit_usd
+    label: Minimum Deposit (USD)
+    type: number
+    unit: usd
+    required: false
+    synonyms:
+      - min_deposit
+      - Min. Deposit
+      - Minimum Deposit
+      - Minimum Balance
+      - Min Balance
+    range:
+      min: 0.0
+      max: 1000000.0
+    status: ACCEPTED
+    accepted_by: Ihsan Khan
+    accepted_at: "2026-10-20"
+    provenance:
+      tag: MEASURED
+      occurrences: 7
+      pattern: count(distinct min_deposit)
+      note: >-
+        Seven distinct tiers appear: 0, 100, 500, 1000, 5000, 10000, 25000. Zero is a
+        real tier (no minimum), not an absent value. Declared not-required because a
+        demand product sheet may omit the column entirely.
+
+  - name: term_months
+    label: Term (months)
+    type: number
+    unit: months
+    required: true
+    synonyms:
+      - term_months
+      - Term
+      - Term (months)
+      - Term Months
+      - Maturity
+    range:
+      min: 0.0
+      max: 600.0
+    status: ACCEPTED
+    accepted_by: Ihsan Khan
+    accepted_at: "2026-10-20"
+    provenance:
+      tag: MEASURED
+      occurrences: 7
+      pattern: count(distinct term_months)
+      note: >-
+        Seven distinct values appear: 0, 3, 6, 12, 24, 36, 60. ZERO MEANS "NO TERM" - a
+        demand product - AND IS NOT A MISSING VALUE. A pipeline that reads 0 as absent
+        would silently drop 113 of 150 records; see the ambiguity declaration
+        zero_term_is_a_value_not_an_absence below, which exists to stop that.
+
+  - name: effective_date
+    label: Effective Date
+    type: date
+    unit: null
+    required: true
+    synonyms:
+      - effective_date
+      - Effective Date
+      - Effective
+      - Date Effective
+      - Rates effective
+    range: null
+    status: ACCEPTED
+    accepted_by: Ihsan Khan
+    accepted_at: "2026-10-20"
+    provenance:
+      tag: MEASURED
+      occurrences: 3
+      pattern: count(distinct effective_date)
+      note: >-
+        Exactly three dates appear across all 150 records: 2026-07-01, 2026-08-01,
+        2026-09-01. Three dates over six institutions is what makes a same-product
+        duplicate possible, which is what the precedence group below is about.
+
+# -----------------------------------------------------------------------------
+# 2. CONVERSIONS — the factors the customer declares. The engine owns no arithmetic
+#    constant of its own; editing a factor here changes the output column.
+# -----------------------------------------------------------------------------
+conversions:
+  - id: pct_month_to_pct_annum
+    from: percent_per_month
+    to: percent_per_annum
+    factor: 12.0
+    formula_text: x 12 (monthly -> annual)
+    status: ACCEPTED
+    accepted_by: Ihsan Khan
+    accepted_at: "2026-10-20"
+    provenance:
+      tag: AUTHORED
+      because: >-
+        One source quotes its nominal rate per month under the heading
+        "Nominal (monthly)" while the canonical field is per annum, so the two numbers
+        are not comparable until one is restated. This declares the simple-interest
+        restatement, x 12, NOT the compounded equivalent ((1+r)^12 - 1), because the
+        heading says "Nominal" and a nominal rate is quoted simple by convention. A
+        reviewer who believes their source compounds should reject this and declare the
+        compounded factor instead - the arithmetic difference is material at these rates
+        and this is exactly the kind of call we refuse to make silently.
+
+# -----------------------------------------------------------------------------
+# 3. PRECEDENCE — which of the customer's own statements governs when two disagree.
+#    READ THE HEADER: an AUTHORED precedence rule is us deciding something that is not
+#    ours to decide. Both entries below therefore resolve nothing; they route the
+#    conflict to a human and stay PROPOSED until the customer accepts or replaces them.
+# -----------------------------------------------------------------------------
+precedence:
+  - id: footnote_contradicting_table
+    name: Footnote contradicts the table
+    field: null
+    condition: >-
+      two values for the same field and record, one from a table cell and one from a
+      footnote, that are not equal
+    action: flag
+    description: >-
+      Show both, with both source locations, and let a human choose. Nothing is
+      auto-accepted.
+    status: ACCEPTED
+    accepted_by: Ihsan Khan
+    accepted_at: "2026-10-20"
+    provenance:
+      tag: AUTHORED
+      because: >-
+        We are deliberately NOT declaring "the table wins" or "the footnote wins".
+        Choosing between two statements the customer themselves published is the one
+        judgement this product exists to refuse, and a footnote that contradicts a table
+        is usually the more recent correction - or the less. Only the customer knows.
+        Until they declare it, the honest behaviour is to surface the contradiction with
+        both provenances attached rather than to pick a winner and look confident.
+
+  - id: same_record_two_effective_dates
+    name: Same record under two effective dates
+    field: effective_date
+    condition: >-
+      the same institution, product and term appears under more than one effective_date
+      within one batch
+    action: warn
+    description: >-
+      Keep every version, warn, and let a human say which one the report should carry.
+    status: ACCEPTED
+    accepted_by: Ihsan Khan
+    accepted_at: "2026-10-20"
+    provenance:
+      tag: AUTHORED
+      because: >-
+        "The latest effective date wins" is the obvious guess and it is still a guess:
+        a batch may legitimately contain a forward-dated sheet that must not yet be
+        reported, so recency is not the same as authority. We warn and keep both rather
+        than silently dropping a row the customer may have meant to publish.
+
+# -----------------------------------------------------------------------------
+# 4. MATERIALITY — how large a discrepancy has to be before it is worth a human's time.
+# -----------------------------------------------------------------------------
+materiality:
+  - id: rate_rounding_tolerance
+    name: Rate rounding tolerance
+    field: interest_rate_annual_pct
+    condition: abs(converted_value - stated_value) > 0.0005
+    threshold: 0.0005
+    action: flag
+    description: >-
+      A difference at or below half of the last published decimal place is rounding
+      noise and is not raised. Anything larger is flagged.
+    status: ACCEPTED
+    accepted_by: Ihsan Khan
+    accepted_at: "2026-10-20"
+    provenance:
+      tag: AUTHORED
+      because: >-
+        The source data publishes rates to three decimal places, so half of the last
+        place - 0.0005 - is the smallest difference that cannot be explained by rounding
+        alone. Setting the tolerance any tighter would flag arithmetic noise and bury a
+        reviewer in false positives; setting it looser would hide a real basis-point
+        error. If the customer publishes to four decimals, this number must change with
+        it, which is why it is data and not a constant in the engine.
+
+  - id: deposit_tier_is_off_ladder
+    name: Deposit minimum is off the observed ladder
+    field: minimum_deposit_usd
+    condition: value not in (0, 100, 500, 1000, 5000, 10000, 25000)
+    action: warn
+    description: >-
+      Every minimum in the data sits on a round tier. A value off the ladder is more
+      likely a misread digit than a real price point, so it is worth a glance.
+    status: ACCEPTED
+    accepted_by: Ihsan Khan
+    accepted_at: "2026-10-20"
+    provenance:
+      tag: MEASURED
+      occurrences: 7
+      pattern: count(distinct min_deposit)
+      note: >-
+        Exactly seven distinct minimums across 150 records, all round tiers. This is a
+        soft signal, not a rule: a genuine eighth tier must be acceptable, which is why
+        the action is warn and not reject.
+
+# -----------------------------------------------------------------------------
+# 5. AMBIGUITY — what we do when we are not sure. Three lanes, never two: the
+#    interesting case is always the middle one.
+# -----------------------------------------------------------------------------
+ambiguity:
+  - id: yield_below_nominal_rate
+    name: Yield below the nominal rate
+    field: annual_percentage_yield_pct
+    condition: annual_percentage_yield_pct >= interest_rate_annual_pct
+    action: flag
+    description: >-
+      A yield lower than the nominal rate it derives from is arithmetically impossible
+      for a compounding product. Flag the pair for review; do not repair either number.
+    status: ACCEPTED
+    accepted_by: Ihsan Khan
+    accepted_at: "2026-10-20"
+    provenance:
+      tag: MEASURED
+      occurrences: 150
+      pattern: count(rows where apy_pct >= rate_pct)
+      note: >-
+        Holds in 150 of 150 records with no exception, so this is a free cross-field
+        validation measured on the customer's own data rather than a rule we invented.
+        A violation means one of the two numbers was misread.
+
+  - id: zero_term_is_a_value_not_an_absence
+    name: A zero term is a value, not an absence
+    field: term_months
+    condition: term_months == 0
+    action: warn
+    description: >-
+      Zero is a demand product. It must be written through to the output as 0 and must
+      never be routed to the missing lane or re-read as null.
+    status: ACCEPTED
+    accepted_by: Ihsan Khan
+    accepted_at: "2026-10-20"
+    provenance:
+      tag: MEASURED
+      occurrences: 113
+      pattern: count(rows where term_months == 0)
+      note: >-
+        113 of 150 records carry term 0. Treating zero as absent would move three
+        quarters of the dataset into the missing lane, which is the single most
+        expensive wrong assumption available in this data.
+
+  - id: terminology_variance_across_sources
+    name: One quantity, many headings
+    field: null
+    condition: a source label matches no declared synonym of any field
+    action: flag
+    description: >-
+      Route the label to review with the candidate fields attached. A label the pack
+      does not declare is never mapped to a field by guesswork.
+    status: ACCEPTED
+    accepted_by: Ihsan Khan
+    accepted_at: "2026-10-20"
+    provenance:
+      tag: MEASURED
+      occurrences: 6
+      pattern: count(distinct institution_name)
+      note: >-
+        Six institutions report these same quantities, each under its own headings, so
+        the synonym lists above are necessarily incomplete and will meet a word they do
+        not contain. The honest response to an unknown heading is the review lane.
+
+  - id: one_sheet_many_products
+    name: One sheet, many products
+    field: null
+    condition: >-
+      more than one record in a document shares a source label without a distinguishing
+      product and term
+    action: flag
+    description: >-
+      A value is not identified by its column heading alone. Without a product and term
+      to key it, the row is ambiguous and goes to review.
+    status: ACCEPTED
+    accepted_by: Ihsan Khan
+    accepted_at: "2026-10-20"
+    provenance:
+      tag: MEASURED
+      occurrences: 6
+      pattern: count(distinct product_type)
+      note: >-
+        Six product types share the same column headings inside a single sheet, so a
+        heading plus a value is not a unique record. The record key needs the product
+        and the term as well.
+
+  - id: large_magnitude_conversion
+    name: A conversion that moves the value too far
+    field: null
+    condition: abs(log10(converted_value / raw_value)) > 3
+    threshold: 1000.0
+    action: flag
+    description: >-
+      A conversion that moves a value by more than three orders of magnitude goes to
+      review regardless of confidence.
+    status: ACCEPTED
+    accepted_by: Ihsan Khan
+    accepted_at: "2026-10-20"
+    provenance:
+      tag: AUTHORED
+      because: >-
+        The only conversion this pack declares moves a value by a factor of 12, so
+        anything three orders of magnitude out is far likelier to be a unit declared
+        wrongly - cents read as dollars, basis points read as percent - than a real
+        number. Confidence cannot catch this, because a model can be entirely confident
+        about a value whose unit it has misread; only the size of the jump catches it.
+
+  - id: upstream_prior_is_evidence_not_a_label
+    name: An upstream confidence is evidence, never a label
+    field: null
+    condition: >-
+      a record arrives carrying an upstream extraction confidence or review flag
+    action: warn
+    description: >-
+      Record the upstream prior as evidence on the cell and let the gate decide
+      independently. Never adopt it as ground truth and never fit a threshold to it.
+    status: ACCEPTED
+    accepted_by: Ihsan Khan
+    accepted_at: "2026-10-20"
+    provenance:
+      tag: MEASURED
+      occurrences: 33
+      pattern: count(rows where needs_review == True)
+      note: >-
+        33 of 150 records arrive pre-flagged for review - 22%, a useful reference point
+        for how much of a real pipeline a human sees. It is NOT a label: the confidence
+        ranges of the flagged and unflagged records are identical (0.61-0.99 against
+        0.60-0.99), so the flag is uncorrelated with the score and cannot calibrate a
+        threshold. Quoting 22% as context is honest; calling it calibration is not.

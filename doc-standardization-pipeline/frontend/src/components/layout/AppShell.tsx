@@ -4,10 +4,11 @@ import { useQuery } from '@tanstack/react-query';
 import {
   Home, Upload, LayoutList, Eye, Database,
   Settings, BarChart2, HelpCircle, ChevronLeft,
-  ChevronRight, Search, Layers, Menu,
+  ChevronRight, Search, Layers, Menu, X, Command
 } from 'lucide-react';
 import { getHealth, getPacks } from '../../api/client';
 import { useActivePack } from '../../context/AppContext';
+import { UserMenu } from './UserMenu';
 
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true';
 
@@ -20,6 +21,7 @@ interface NavItemDef {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [showShortcutsModal, setShowShortcutsModal] = useState(false);
   const { activePack, setActivePack } = useActivePack();
 
   const { data: health } = useQuery({
@@ -56,173 +58,238 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const overallStatus = health?.overall ?? 'ok';
 
   return (
-    <div className="app-shell">
+    <div className="app-root-container">
+      {/* Slim Top Mock Banner across full window width */}
       {USE_MOCK && (
         <div className="mock-banner" role="banner" aria-label="Mock data mode active">
           ⚠ MOCK DATA — Development Only — Not Real Results
         </div>
       )}
 
-      {/* Sidebar */}
-      <nav
-        className={`sidebar${sidebarCollapsed ? ' collapsed' : ''}`}
-        aria-label="Main navigation"
-      >
-        <div className="sidebar-logo">
-          <div className="sidebar-logo-icon" aria-hidden="true">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 2L2 7l10 5 10-5-10-5z" />
-              <path d="M2 17l10 5 10-5" />
-              <path d="M2 12l10 5 10-5" />
-            </svg>
+      {/* Main Flex App Shell */}
+      <div className="app-shell">
+        {/* Sidebar */}
+        <nav
+          className={`sidebar${sidebarCollapsed ? ' collapsed' : ''}`}
+          aria-label="Main navigation"
+        >
+          <div className="sidebar-logo">
+            <div className="sidebar-logo-icon" aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                <path d="M2 17l10 5 10-5" />
+                <path d="M2 12l10 5 10-5" />
+              </svg>
+            </div>
+            <div className="sidebar-logo-text">
+              <span className="sidebar-logo-title">DataSync</span>
+              <span className="sidebar-logo-sub">Standardization Agent</span>
+            </div>
           </div>
-          <div className="sidebar-logo-text">
-            <span className="sidebar-logo-title">DataSync</span>
-            <span className="sidebar-logo-sub">Standardization Agent</span>
-          </div>
-        </div>
 
-        <div className="sidebar-nav">
-          <span className="sidebar-section-label">Workspace</span>
-          {mainNav.map(item => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.to === '/'}
-              className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
-              aria-label={sidebarCollapsed ? item.label : undefined}
-            >
-              <span className="nav-item-icon">{item.icon}</span>
-              <span className="nav-item-label">{item.label}</span>
-              {item.badge != null && item.badge > 0 && (
-                <span className="nav-badge" aria-label={`${item.badge} items need review`}>
-                  {item.badge}
-                </span>
-              )}
-            </NavLink>
-          ))}
-
-          <span className="sidebar-section-label">Configure</span>
-          {toolsNav.map(item => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
-              aria-label={sidebarCollapsed ? item.label : undefined}
-            >
-              <span className="nav-item-icon">{item.icon}</span>
-              <span className="nav-item-label">{item.label}</span>
-            </NavLink>
-          ))}
-        </div>
-
-        <div className="sidebar-footer">
-          {bottomNav.map(item => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
-              aria-label={sidebarCollapsed ? item.label : undefined}
-            >
-              <span className="nav-item-icon">{item.icon}</span>
-              <span className="nav-item-label">{item.label}</span>
-            </NavLink>
-          ))}
-          <button
-            className="nav-item"
-            onClick={() => setSidebarCollapsed(v => !v)}
-            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            <span className="nav-item-icon">
-              {sidebarCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
-            </span>
-            <span className="nav-item-label">Collapse</span>
-          </button>
-        </div>
-      </nav>
-
-      {/* Main */}
-      <div className="app-main">
-        <header className="app-header" role="banner">
-          {/* Schema Pack Selector */}
-          <div className="header-pack-selector">
-            <Layers size={16} color="var(--color-text-muted)" aria-hidden="true" />
-            <div className="select-wrapper">
-              <select
-                id="schema-pack-selector"
-                value={activePack}
-                onChange={e => setActivePack(e.target.value)}
-                aria-label="Active schema pack"
-                style={{ fontSize: '0.8125rem', padding: '5px 28px 5px 10px', minWidth: 140 }}
+          <div className="sidebar-nav">
+            <span className="sidebar-section-label">Workspace</span>
+            {mainNav.map(item => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.to === '/'}
+                className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
+                aria-label={sidebarCollapsed ? item.label : undefined}
               >
-                {(packs ?? []).map(p => (
-                  <option key={p.id} value={p.id}>{p.name} {p.version}</option>
-                ))}
-              </select>
-            </div>
+                <span className="nav-item-icon">{item.icon}</span>
+                <span className="nav-item-label">{item.label}</span>
+                {item.badge != null && item.badge > 0 && (
+                  <span className="nav-badge" aria-label={`${item.badge} items need review`}>
+                    {item.badge}
+                  </span>
+                )}
+              </NavLink>
+            ))}
+
+            <span className="sidebar-section-label">Configure</span>
+            {toolsNav.map(item => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
+                aria-label={sidebarCollapsed ? item.label : undefined}
+              >
+                <span className="nav-item-icon">{item.icon}</span>
+                <span className="nav-item-label">{item.label}</span>
+              </NavLink>
+            ))}
           </div>
 
-          {/* Search */}
-          <div className="header-search" role="search">
-            <Search size={14} className="header-search-icon" aria-hidden="true" />
-            <input
-              type="search"
-              placeholder="Search fields, documents… (/)"
-              aria-label="Search"
-              id="header-search"
-              onKeyDown={e => {
-                if (e.key === '/') { e.preventDefault(); (e.target as HTMLInputElement).focus(); }
-              }}
-            />
-          </div>
-
-          {/* Actions */}
-          <div className="header-actions">
-            {/* System Status Chip */}
+          <div className="sidebar-footer">
+            {bottomNav.map(item => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
+                aria-label={sidebarCollapsed ? item.label : undefined}
+              >
+                <span className="nav-item-icon">{item.icon}</span>
+                <span className="nav-item-label">{item.label}</span>
+              </NavLink>
+            ))}
             <button
-              className={`status-chip ${overallStatus}`}
-              onClick={() => navigate('/health')}
-              aria-label={`System status: ${overallStatus}. Click to view details.`}
-              id="system-status-chip"
+              className="nav-item"
+              onClick={() => setSidebarCollapsed(v => !v)}
+              aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             >
-              <span className="status-dot" aria-hidden="true" />
-              {overallStatus === 'ok' ? 'All systems OK' :
-               overallStatus === 'degraded' ? 'Degraded' : 'System down'}
+              <span className="nav-item-icon">
+                {sidebarCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+              </span>
+              <span className="nav-item-label">Collapse</span>
             </button>
+          </div>
+        </nav>
 
-            {/* Avatar */}
-            <div className="avatar" role="img" aria-label="User account" tabIndex={0}>
-              A
+        {/* Main Content Area */}
+        <div className="app-main">
+          <header className="app-header" role="banner">
+            {/* Schema Pack Selector */}
+            <div className="header-pack-selector">
+              <Layers size={16} color="var(--color-text-muted)" aria-hidden="true" />
+              <div className="select-wrapper">
+                <select
+                  id="schema-pack-selector"
+                  value={activePack}
+                  onChange={e => setActivePack(e.target.value)}
+                  aria-label="Active schema pack"
+                  style={{ fontSize: '0.8125rem', padding: '5px 28px 5px 10px', minWidth: 140 }}
+                >
+                  {(packs ?? []).map(p => (
+                    <option key={p.id} value={p.id}>{p.name} {p.version}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Search */}
+            <div className="header-search" role="search">
+              <Search size={14} className="header-search-icon" aria-hidden="true" />
+              <input
+                type="search"
+                placeholder="Search fields, documents… (/)"
+                aria-label="Search"
+                id="header-search"
+                onKeyDown={e => {
+                  if (e.key === '/') { e.preventDefault(); (e.target as HTMLInputElement).focus(); }
+                }}
+              />
+            </div>
+
+            {/* Header Actions: Status chip & User Portal Menu */}
+            <div className="header-actions">
+              {/* System Status Chip */}
+              <button
+                className={`status-chip ${overallStatus}`}
+                onClick={() => navigate('/health')}
+                aria-label={`System status: ${overallStatus}. Click to view details.`}
+                id="system-status-chip"
+              >
+                <span className="status-dot" aria-hidden="true" />
+                {overallStatus === 'ok' ? 'All systems OK' :
+                 overallStatus === 'degraded' ? 'Degraded' : 'System down'}
+              </button>
+
+              {/* Accessible User Portal Menu (Header top right) */}
+              <UserMenu onOpenShortcuts={() => setShowShortcutsModal(true)} />
+            </div>
+          </header>
+
+          {/* Page Content */}
+          <main id="main-content" className="page-content" tabIndex={-1}>
+            {children}
+          </main>
+
+          {/* Mobile Bottom Tab Bar */}
+          <nav className="bottom-tab-bar" aria-label="Mobile navigation">
+            {[
+              { to: '/', icon: <Home size={20} />, label: 'Home' },
+              { to: '/upload', icon: <Upload size={20} />, label: 'Upload' },
+              { to: '/review', icon: <Eye size={20} />, label: 'Review' },
+              { to: '/dataset', icon: <Database size={20} />, label: 'Data' },
+              { to: '/settings', icon: <Settings size={20} />, label: 'Settings' },
+            ].map(item => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.to === '/'}
+                className={({ isActive }) => `bottom-tab-item${isActive ? ' active' : ''}`}
+              >
+                {item.icon}
+                <span>{item.label}</span>
+              </NavLink>
+            ))}
+          </nav>
+        </div>
+      </div>
+
+      {/* Keyboard Shortcuts Modal */}
+      {showShortcutsModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10000,
+            padding: 16,
+          }}
+          onClick={() => setShowShortcutsModal(false)}
+        >
+          <div
+            className="card"
+            style={{ width: '100%', maxWidth: 480, padding: 20 }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Command size={18} color="var(--color-accent)" />
+                <h3 style={{ fontSize: '1.05rem', fontWeight: 600 }}>Keyboard Shortcuts</h3>
+              </div>
+              <button
+                className="btn btn-ghost btn-sm btn-icon"
+                onClick={() => setShowShortcutsModal(false)}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, fontSize: '0.8125rem' }}>
+              <div style={{ padding: '8px 12px', background: 'var(--color-surface-2)', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <kbd style={{ background: 'var(--color-surface)', padding: '2px 6px', borderRadius: 4, border: '1px solid var(--color-border)', fontWeight: 700 }}>A</kbd>
+                <span>Accept mapping</span>
+              </div>
+              <div style={{ padding: '8px 12px', background: 'var(--color-surface-2)', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <kbd style={{ background: 'var(--color-surface)', padding: '2px 6px', borderRadius: 4, border: '1px solid var(--color-border)', fontWeight: 700 }}>R</kbd>
+                <span>Reject mapping</span>
+              </div>
+              <div style={{ padding: '8px 12px', background: 'var(--color-surface-2)', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <kbd style={{ background: 'var(--color-surface)', padding: '2px 6px', borderRadius: 4, border: '1px solid var(--color-border)', fontWeight: 700 }}>E</kbd>
+                <span>Edit in Detail Drawer</span>
+              </div>
+              <div style={{ padding: '8px 12px', background: 'var(--color-surface-2)', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <kbd style={{ background: 'var(--color-surface)', padding: '2px 6px', borderRadius: 4, border: '1px solid var(--color-border)', fontWeight: 700 }}>Z</kbd>
+                <span>Universal Undo</span>
+              </div>
+              <div style={{ padding: '8px 12px', background: 'var(--color-surface-2)', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <kbd style={{ background: 'var(--color-surface)', padding: '2px 6px', borderRadius: 4, border: '1px solid var(--color-border)', fontWeight: 700 }}>J / K</kbd>
+                <span>Next / Prev Field</span>
+              </div>
+              <div style={{ padding: '8px 12px', background: 'var(--color-surface-2)', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <kbd style={{ background: 'var(--color-surface)', padding: '2px 6px', borderRadius: 4, border: '1px solid var(--color-border)', fontWeight: 700 }}>/</kbd>
+                <span>Focus Search</span>
+              </div>
             </div>
           </div>
-        </header>
-
-        {/* Page */}
-        <main id="main-content" className="page-content" tabIndex={-1}>
-          {children}
-        </main>
-
-        {/* Mobile Bottom Tab Bar */}
-        <nav className="bottom-tab-bar" aria-label="Mobile navigation">
-          {[
-            { to: '/', icon: <Home size={20} />, label: 'Home' },
-            { to: '/upload', icon: <Upload size={20} />, label: 'Upload' },
-            { to: '/review', icon: <Eye size={20} />, label: 'Review' },
-            { to: '/dataset', icon: <Database size={20} />, label: 'Data' },
-            { to: '/schema', icon: <Menu size={20} />, label: 'More' },
-          ].map(item => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.to === '/'}
-              className={({ isActive }) => `bottom-tab-item${isActive ? ' active' : ''}`}
-            >
-              {item.icon}
-              <span>{item.label}</span>
-            </NavLink>
-          ))}
-        </nav>
-      </div>
+        </div>
+      )}
     </div>
   );
 }

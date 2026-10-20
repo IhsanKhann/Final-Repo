@@ -411,9 +411,16 @@ pack only   analyst    pack +      smaller    promoted    gate ALLOWED
   all** — faster, cheaper, provably identical to what the analyst chose.
 - Round 3: a term corrected the same way three times is **proposed** as a pack synonym.
   The customer accepts it. *The system proposes, the customer authors.* That line never moves.
-- **What must not change between rounds:** documents, pack version, model, temperature,
-  prompt version. All five are recorded in the round report. If any differ, the comparison
-  is void and the UI says so instead of showing a number.
+- **What must not change between rounds:** documents, pack version, **provider**, model,
+  sampling, prompt version. All six are recorded in the round report. If any differ, the
+  comparison is void and the UI says so instead of showing a number.
+- ⚠ **Sampling is provider-dependent.** The OpenAI dialect takes `temperature=0`. Current
+  Claude models **removed** `temperature`/`top_p`/`top_k` — any value is a 400 on Fable
+  5/5.1, Opus 5.5/5/4.8/4.7 and Sonnet 5, and non-default values are a 400 on Sonnet 5.5 /
+  Haiku 5.5, so `temperature=0` fails there too. The anthropic row omits the field and rests
+  its determinism on a pinned model plus structured output. The round report records what
+  was **sent**, so an OpenAI round and an Anthropic round are **not comparable** on that
+  variable. OpenAI is our inference provider, so the demo path is unaffected.
 
 ---
 

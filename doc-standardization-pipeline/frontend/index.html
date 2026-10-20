@@ -4,8 +4,32 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
     <title>DataSync — Autonomous Document Standardization & Schema Mapping</title>
     <meta name="description" content="Enterprise-grade AI document extraction, physical unit normalization, business rule validation, and human-in-the-loop audit verification." />
+    <script>
+      (function() {
+        try {
+          var stored = localStorage.getItem('theme') || 'system';
+          var isDark = stored === 'dark' || (stored === 'system' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          var root = document.documentElement;
+          root.setAttribute('data-theme', isDark ? 'dark' : 'light');
+          root.style.colorScheme = isDark ? 'dark' : 'light';
+
+          var textSize = localStorage.getItem('textSize') || 'default';
+          if (textSize !== 'default') root.setAttribute('data-text-size', textSize);
+
+          var density = localStorage.getItem('density') || 'comfortable';
+          if (density !== 'comfortable') root.setAttribute('data-density', density);
+
+          var contrast = localStorage.getItem('contrast') || 'normal';
+          if (contrast === 'high') root.setAttribute('data-contrast', 'high');
+
+          var dimDocs = localStorage.getItem('dimDocuments') === 'true';
+          if (dimDocs) root.setAttribute('data-dim-documents', 'true');
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="app"></div>

@@ -3,25 +3,41 @@
 /* ─── CSS Variables / Design Tokens ─────────────────────────────────────── */
 :root {
   /* Colors – Light Theme */
-  --color-bg: #f8f9fb;
-  --color-surface: #ffffff;
-  --color-surface-2: #f1f3f7;
-  --color-border: #e2e6ee;
-  --color-border-subtle: #edf0f5;
+  --bg: #f8f9fb;
+  --surface: #ffffff;
+  --surface-2: #f1f3f7;
+  --border: #e2e6ee;
+  --border-strong: #8A94AD;
+  --border-subtle: #edf0f5;
+  --text: #0f1623;
+  --text-2: #4b5563;
+  --text-3: #94A0BA;
+  --accent: #4f46e5;
+  --accent-solid: #6366F1;
+  --accent-soft: #eef2ff;
+  --accent-hover: #4338ca;
+  --accent-muted: #c7d2fe;
+  --nav-bg: #ffffff;
+  --nav-text: #4b5563;
+  --nav-active-bg: #eef2ff;
+  --nav-accent: #4f46e5;
 
-  /* Text */
-  --color-text-primary: #0f1623;
-  --color-text-secondary: #4b5563;
-  --color-text-muted: #9ca3af;
+  /* Aliases for backwards compatibility */
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-border-subtle: var(--border-subtle);
+  --color-text-primary: var(--text);
+  --color-text-secondary: var(--text-2);
+  --color-text-muted: var(--text-3);
   --color-text-on-accent: #ffffff;
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-light: var(--accent-soft);
+  --color-accent-muted: var(--accent-muted);
 
-  /* Accent – Indigo */
-  --color-accent: #4f46e5;
-  --color-accent-hover: #4338ca;
-  --color-accent-light: #eef2ff;
-  --color-accent-muted: #c7d2fe;
-
-  /* Status */
+  /* Status Colors – Light */
   --color-success: #059669;
   --color-success-bg: #ecfdf5;
   --color-success-border: #a7f3d0;
@@ -46,7 +62,7 @@
   --color-mock-bg: #dc2626;
   --color-mock-text: #ffffff;
 
-  /* Sidebar */
+  /* Sidebar & Header */
   --sidebar-width: 240px;
   --sidebar-collapsed-width: 64px;
   --header-height: 60px;
@@ -66,33 +82,111 @@
 
   /* Transitions */
   --transition-fast: 120ms ease;
-  --transition: 200ms ease;
-  --transition-slow: 350ms ease;
+  --transition: 150ms ease;
+  --transition-slow: 250ms ease;
+
+  color-scheme: light;
 }
 
-/* ─── Dark Mode ─────────────────────────────────────────────────────────── */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-bg: #0c0e14;
-    --color-surface: #13161f;
-    --color-surface-2: #1c2033;
-    --color-border: #252a3a;
-    --color-border-subtle: #1e2332;
+/* ─── Dark Theme Tokens ([data-theme="dark"]) ────────────────────────────── */
+[data-theme="dark"] {
+  --bg: #0B1020;
+  --surface: #121A2E;
+  --surface-2: #1A2440;
+  --border: #2A3552;
+  --border-strong: #8A94AD;
+  --border-subtle: #1C243B;
+  --text: #E6EAF5;
+  --text-2: #A9B4CC;
+  --text-3: #94A0BA;
+  --accent: #818CF8;
+  --accent-solid: #6366F1;
+  --accent-soft: #1E2447;
+  --accent-hover: #A5B4FC;
+  --accent-muted: #3730A3;
+  --nav-bg: #070B16;
+  --nav-text: #CBD5E1;
+  --nav-active-bg: #1B2440;
+  --nav-accent: #818CF8;
 
-    --color-text-primary: #f0f2f8;
-    --color-text-secondary: #9ca3af;
-    --color-text-muted: #6b7280;
+  /* Aliases */
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-border-subtle: var(--border-subtle);
+  --color-text-primary: var(--text);
+  --color-text-secondary: var(--text-2);
+  --color-text-muted: var(--text-3);
+  --color-text-on-accent: #ffffff;
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-light: var(--accent-soft);
+  --color-accent-muted: var(--accent-muted);
 
-    --color-accent-light: #1e1b4b;
-    --color-accent-muted: #3730a3;
+  /* Status Colors – Dark (Text on Tint, Icon + Text always) */
+  --color-success: #6EE7B7;
+  --color-success-bg: #0F3D2E;
+  --color-success-border: #14533D;
 
-    --color-success-bg: #064e3b;
-    --color-warning-bg: #451a03;
-    --color-error-bg: #450a0a;
-    --color-info-bg: #1e3a5f;
+  --color-warning: #FCD34D;
+  --color-warning-bg: #3D2E0A;
+  --color-warning-border: #523D0C;
 
-    --color-neutral-bg: #1c2033;
+  --color-error: #FCA5A5;
+  --color-error-bg: #4A1714;
+  --color-error-border: #6B1E19;
+
+  --color-info: #93C5FD;
+  --color-info-bg: #172B54;
+  --color-info-border: #1E3A73;
+
+  --color-neutral: #CBD5E1;
+  --color-neutral-bg: #1E293B;
+  --color-neutral-border: #334155;
+
+  color-scheme: dark;
+}
+
+/* ─── Preference Modifiers ───────────────────────────────────────────────── */
+[data-contrast="high"] {
+  --border: var(--border-strong, #8A94AD);
+  --color-border: var(--border-strong, #8A94AD);
+}
+
+[data-text-size="large"] {
+  font-size: 15px;
+}
+[data-text-size="large"] body {
+  font-size: 15px;
+}
+
+[data-text-size="extra-large"] {
+  font-size: 16px;
+}
+[data-text-size="extra-large"] body {
+  font-size: 16px;
+}
+
+[data-density="compact"] {
+  --header-height: 50px;
+}
+
+[data-dim-documents="true"][data-theme="dark"] .source-paper-canvas {
+  filter: brightness(0.85);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
   }
+}
+[data-reduce-motion="on"] * {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
 }
 
 /* ─── Reset & Base ──────────────────────────────────────────────────────── */
@@ -139,32 +233,41 @@ p { color: var(--color-text-secondary); }
   clip: rect(0,0,0,0); white-space: nowrap; border-width: 0;
 }
 
-/* ─── Mock Banner ───────────────────────────────────────────────────────── */
+/* ─── Mock Banner (Slim Top Bar across full width) ───────────────────────── */
 .mock-banner {
   background: var(--color-mock-bg);
   color: var(--color-mock-text);
   text-align: center;
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  padding: 6px 16px;
-  position: sticky;
-  top: 0;
+  height: 26px;
+  line-height: 26px;
+  width: 100%;
+  flex-shrink: 0;
   z-index: 9999;
-  animation: pulse-banner 2s infinite;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-@keyframes pulse-banner {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.85; }
+/* ─── App Shell Structure ───────────────────────────────────────────────── */
+.app-root-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  background: var(--color-bg);
 }
 
-/* ─── App Shell ─────────────────────────────────────────────────────────── */
 .app-shell {
   display: flex;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
+  width: 100%;
 }
 
 .sidebar {
