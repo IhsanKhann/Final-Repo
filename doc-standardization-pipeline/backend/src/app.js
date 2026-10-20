@@ -654,10 +654,13 @@ app.get('/api/insights', (req, res) => {
 });
 
 // -----------------------------------------------------------------------------
-// Server Start
+// Server Start (Guarded for standalone servers vs. Vercel serverless)
 // -----------------------------------------------------------------------------
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`[Server] Document Standardization Backend running on port ${PORT}`);
-});
+if (!process.env.VERCEL) {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`[Server] Document Standardization Backend running on port ${PORT}`);
+  });
+}
 
 module.exports = app;
+
