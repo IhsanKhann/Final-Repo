@@ -6,7 +6,7 @@ import {
   FileText, Clock, CheckCircle2, AlertTriangle, XCircle,
   Upload, X, ArrowUpDown
 } from 'lucide-react';
-import { getBatches, cancelBatch } from '../api/client';
+import { getBatches, cancelBatch, getPacks } from '../api/client';
 import { BatchStatusBadge, TableSkeleton } from '../components/ui/SharedUi';
 import { useToast } from '../context/AppContext';
 import type { Batch } from '../api/types';
@@ -20,6 +20,7 @@ export function BatchesPage() {
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('all');
   const [selectedBatchForModal, setSelectedBatchForModal] = useState<Batch | null>(null);
 
+  const { data: packs } = useQuery({ queryKey: ['packs'], queryFn: getPacks });
   const { data: batches, isLoading, refetch, isRefetching } = useQuery({
     queryKey: ['batches'],
     queryFn: getBatches,
@@ -123,10 +124,13 @@ export function BatchesPage() {
                   fontSize: '0.8125rem',
                 }}
               >
+                {/* Packs come from the server. This list used to be hardcoded as Mining,
+                    Shipping and Finance — none of which exist on any server, so the
+                    filter offered three fictional options and silently matched nothing. */}
                 <option value="all">All Packs</option>
-                <option value="mining-v1">Mining v1</option>
-                <option value="shipping-v1">Shipping v1</option>
-                <option value="finance-v1">Finance v1</option>
+                {packs?.map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
               </select>
             </div>
 
