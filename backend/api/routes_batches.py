@@ -19,10 +19,13 @@ What these routes refuse to do:
 
 from __future__ import annotations
 
+import time
 import uuid
+from collections.abc import Iterator
 from typing import Annotated, Any, Literal, Sequence
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile
+from fastapi.responses import StreamingResponse
 
 from backend.api.deps import (
     ApiProblem,
@@ -208,23 +211,71 @@ def get_batch(batch_id: str, service: Service, tenant_id: Tenant) -> Batch:
     return batch
 
 
-@router.get("/{batch_id}/events", response_model=list[AgentEvent])
+@router.get("/{batch_id}/events")
 def batch_events(
     batch_id: str,
+    request: Request,
     service: Service,
     tenant_id: Tenant,
     after_seq: Annotated[int, Query(ge=0)] = 0,
-) -> list[AgentEvent]:
-    """A JSON array today; the UI polls. SSE later changes this handler and nothing else.
+):
+    """Server-sent events when the caller asks for them, a JSON array otherwise.
 
-    The event SHAPE is already `AgentEvent`, the log is already append-only and ordered,
-    and `after_seq` is already the resume cursor -- so the swap is: iterate
-    `EventLog.stream()` and yield `data: {json}\\n\\n`.
+    ⚠ THIS WAS A DEMO BLOCKER, AND THE FAILURE WAS SILENT ON THE BACKEND SIDE.
+    `client.ts::connectBatchEvents` opens an `EventSource`, which sends
+    `Accept: text/event-stream` and ABORTS the connection if the response is anything
+    else. This handler returned `application/json`, so the browser logged
+
+        EventSource's response has a MIME type ("application/json") that is not
+        "text/event-stream". Aborting the connection.
+
+    ...and the upload screen sat on "Ingest" forever while the batch completed perfectly
+    behind it. The API looked healthy from curl and from the acceptance harness, because
+    both are happy with JSON. Only a browser could see it.
+
+    Content negotiation rather than a new path: the JSON form is what the acceptance
+    harness and any poller use, and the contract in endpoints.ts names ONE events URL.
     """
     events = service.batch_events(batch_id, tenant_id=tenant_id, after_seq=after_seq)
     if events is None:
         raise ApiProblem.not_found("batch", batch_id)
-    return events
+
+    if "text/event-stream" not in (request.headers.get("accept") or ""):
+        return events
+
+    def stream() -> Iterator[str]:
+        seq = after_seq
+        # Everything already recorded, then whatever arrives until the batch settles.
+        # A terminal batch ends the stream so EventSource does not reconnect forever.
+        deadline = time.monotonic() + 120.0
+        while True:
+            pending = service.batch_events(batch_id, tenant_id=tenant_id, after_seq=seq) or []
+            for event in pending:
+                seq = max(seq, getattr(event, "seq", seq) or seq)
+                yield f"data: {event.model_dump_json()}\n\n"
+
+            batch = service.get_batch(batch_id, tenant_id=tenant_id)
+            if batch is None or batch.status in ("done", "failed", "cancelled"):
+                # A named terminal event, so the client can close cleanly rather than
+                # treat the disconnect as an error and retry.
+                yield f'event: end\ndata: {{"batch_id": "{batch_id}"}}\n\n'
+                return
+            if time.monotonic() > deadline:
+                yield f'event: end\ndata: {{"batch_id": "{batch_id}", "reason": "timeout"}}\n\n'
+                return
+            time.sleep(0.5)
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            # Without this an intermediary may buffer the whole stream and the UI shows
+            # nothing until the run is over, which looks exactly like the bug above.
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 @router.post("/{batch_id}/cancel", response_model=Batch)

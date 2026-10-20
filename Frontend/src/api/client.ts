@@ -149,6 +149,18 @@ export function connectBatchEvents(
   es.onmessage = e => {
     try { onEvent(JSON.parse(e.data)); } catch { /* ignore parse errors */ }
   };
-  if (onError) es.onerror = onError;
+  // The server emits a named `end` event when the batch reaches a terminal state and then
+  // closes the stream. Without closing here, EventSource treats every close as a dropped
+  // connection and reconnects every few seconds for the life of the page — a finished
+  // batch would keep re-opening a stream that immediately ends.
+  es.addEventListener('end', () => es.close());
+  if (onError) {
+    es.onerror = err => {
+      // readyState CLOSED means the server ended the stream deliberately; that is not a
+      // failure and must not be reported as one, or the UI shows an error on success.
+      if (es.readyState === EventSource.CLOSED) return;
+      onError(err);
+    };
+  }
   return es;
 }
