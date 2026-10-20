@@ -21,6 +21,20 @@ from backend.engine.config import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _no_inherited_credentials(monkeypatch):
+    """Scrub the real environment so these assertions do not depend on whose laptop runs.
+
+    Without this, a developer with a working OPENAI_API_KEY exported sees `secret_for`
+    seed from env and the unset-secret tests fail, while CI with no key sees them pass --
+    a test that disagrees with itself by machine teaches nobody anything.
+    """
+    for env_var in SECRETS.values():
+        monkeypatch.delenv(env_var, raising=False)
+    for spec in CONTROLS.values():
+        monkeypatch.delenv(spec.env_var, raising=False)
+
+
 @pytest.fixture()
 def store(tmp_path):
     return SqliteStore(tmp_path / "config.db")

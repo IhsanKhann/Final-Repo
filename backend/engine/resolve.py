@@ -170,10 +170,14 @@ def resolve(
 
     # 3. Last and weakest, a model proposal -- and only inside the declared fields.
     elif isinstance(proposal, Proposal):
-        used_model = True
+        # The proposer states whether a model was consulted and with what authority. A
+        # precedent surfaced through the mapper keeps ANALYST authority, so overwriting
+        # this with MODEL here would let a model proposal outrank a human decision.
+        used_model = proposal.used_model
+        model_call_skipped = not proposal.used_model
         if proposal.target_field in declared:
             chosen = proposal.target_field
-            authority = Authority.MODEL
+            authority = proposal.authority
             confidence = proposal.confidence
             reason_parts.append(proposal.reason)
         else:

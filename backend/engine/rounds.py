@@ -6,8 +6,8 @@ false claim made with a chart. So comparability is part of the report, not a nic
 of the five controlled variables differs between two rounds, the report says NOT COMPARABLE
 and the UI shows that instead of a delta.
 
-The five controlled variables, from README section 10:
-    documents, pack version, model, temperature, prompt version.
+The six controlled variables: documents, pack version, provider, model, sampling,
+prompt version. Sampling and provider are a pair -- see CONTROLLED_VARIABLES below.
 
 What this module refuses to do:
   * It refuses to compute a delta across rounds that are not comparable.
@@ -22,13 +22,15 @@ from typing import Iterable, Sequence
 
 from backend.engine.contracts import Mapping, RoundReport
 
-#: The five variables that must not move between rounds, by RoundReport field name.
-#: `sampling` rather than `temperature`, because what matters is what was sent: a round
-#: run against the anthropic dialect sent no temperature at all, and comparing it against
-#: an openai-dialect round is not comparable on this variable however the code intended it.
+#: The SIX variables that must not move between rounds, by RoundReport field name.
+#: `sampling` rather than `temperature`, because what matters is what was sent: a round run
+#: against the anthropic dialect sent no temperature at all, and comparing it against an
+#: openai-dialect round is not comparable on this variable however the code intended it.
+#: `provider` joined the list for the same reason -- it changes what sampling can mean.
 CONTROLLED_VARIABLES: tuple[str, ...] = (
     "documents_fingerprint",
     "pack_version",
+    "provider",
     "model",
     "sampling",
     "prompt_version",

@@ -425,6 +425,49 @@ def load_packs(directory: str | Path | None = None) -> dict[str, Pack]:
     return found
 
 
+def resolve_active_pack(
+    active_pack_id: str | None, directory: str | Path | None = None
+) -> Pack:
+    """Pick the pack a run uses, or block the run rather than guessing.
+
+    `active_pack_id` is empty by default because a pack id is a domain noun and Law II
+    keeps those out of engine code -- a pack id stored in the config database is data and
+    fine, but one written into a module is meaning in the wrong place.
+
+    So an unset value means "the single pack in packs/". If there is more than one and
+    nothing is stored, the run is BLOCKED and names the packs it found. It never silently
+    picks the first: that would make a run's governing rulebook depend on filename order,
+    and the whole product rests on knowing which rulebook decided a value.
+    """
+    directory = Path(directory) if directory is not None else default_pack_dir()
+    available = load_packs(directory)
+
+    if not available:
+        raise PackError(directory / "<none>", 1, "no pack found; a run needs a rulebook")
+
+    wanted = (active_pack_id or "").strip()
+    if wanted:
+        if wanted not in available:
+            raise PackError(
+                directory / "<none>",
+                1,
+                f"the configured active pack {wanted!r} is not here; found "
+                f"{sorted(available)}",
+            )
+        return available[wanted]
+
+    if len(available) > 1:
+        raise PackError(
+            directory / "<none>",
+            1,
+            f"{len(available)} packs are present ({sorted(available)}) and no active pack "
+            "is configured. Set one in the config store rather than letting the run guess "
+            "which rulebook governs.",
+        )
+
+    return next(iter(available.values()))
+
+
 def _from_validation_error(
     exc: ValidationError, path: Path, index: dict[tuple[Any, ...], int]
 ) -> PackError:
@@ -769,6 +812,7 @@ __all__ = [
     "default_pack_dir",
     "load_pack",
     "load_packs",
+    "resolve_active_pack",
     "to_schema_pack",
     "check_quote",
     "recount",

@@ -199,6 +199,7 @@ def _report(round_number: int, **overrides) -> RoundReport:
         round=round_number,
         pack_id="p1",
         pack_version="1.0.0",
+        provider="openai",
         model="pinned-model",
         sampling="temperature=0",
         prompt_version="v1",
@@ -237,13 +238,16 @@ def test_two_rounds_on_the_same_inputs_report_a_delta():
         # The anthropic dialect sends no temperature at all, so a round run against it is
         # not comparable with an openai-dialect round however the code intended it.
         {"sampling": "not-sent: removed by provider"},
+        # Provider is the sixth variable for that same reason: it changes what sampling
+        # can even mean.
+        {"provider": "anthropic"},
         {"prompt_version": "v2"},
         {"pack_version": "1.1.0"},
         {"documents_fingerprint": "different"},
     ],
 )
 def test_a_round_that_changed_a_controlled_variable_reports_not_comparable(moved):
-    """All five controlled variables, because any one of them voids the comparison."""
+    """All six controlled variables, because any one of them voids the comparison."""
     compared = compare(_report(2, **moved), _report(1))
     assert compared.comparable is False
     assert compared.delta_vs_previous is None

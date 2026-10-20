@@ -432,6 +432,12 @@ class Proposal(Boundary):
     model: str
     prompt_version: str
     authority: Authority = Authority.MODEL
+    #: Whether a model was actually consulted to produce this. False when deterministic
+    #: retrieval resolved the label on its own. The proposer is the only layer that knows,
+    #: so it states it here rather than letting the engine infer it from the authority --
+    #: an exact synonym match carries MODEL authority but consulted no model, and guessing
+    #: from authority would overcount model calls in exactly the metric we claim to improve.
+    used_model: bool = True
 
 
 class Unavailable(Boundary):
@@ -498,6 +504,9 @@ class RoundReport(Boundary):
     tenant_id: str = "demo"
     pack_id: str
     pack_version: str
+    #: Sixth controlled variable. A provider change moves what `sampling` can even mean,
+    #: so two rounds on different providers are not comparable however identical the rest.
+    provider: str
     model: str
     #: What was actually SENT, never what was intended: "temperature=0" for an
     #: openai-dialect provider, or "not-sent: removed by provider" for the anthropic

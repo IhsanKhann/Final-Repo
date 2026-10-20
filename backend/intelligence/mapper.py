@@ -280,6 +280,9 @@ def _deterministic_proposal(
         # mapper call is what surfaced it. resolve.py reads this, so getting it wrong
         # would let a model proposal outrank a human.
         authority=Authority.ANALYST if candidate.via == "precedent" else Authority.MODEL,
+        # No model was consulted to produce this, whatever its authority. The counters
+        # that prove the feedback loop is real are built from this field.
+        used_model=False,
     )
 
 
