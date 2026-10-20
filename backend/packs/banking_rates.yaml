@@ -1,10 +1,16 @@
 # =============================================================================
-# DRAFT — PENDING HUMAN ACCEPTANCE. NOT YET A CUSTOMER PACK.
+# ACCEPTED v1.0.0 — by Ihsan Khan on 2026-10-20. DRAFTED BY AN AGENT, ACCEPTED BY A HUMAN.
 #
-# Every declaration in this file was DRAFTED by an AI agent and is therefore born
-# `status: PROPOSED`. Nothing here takes effect until a named human accepts it
-# (`status: ACCEPTED` plus `accepted_by` and `accepted_at` — the loader refuses an
-# ACCEPTED declaration with no human attached to it).
+# This header said DRAFT — PENDING HUMAN ACCEPTANCE long after the body said otherwise,
+# so a reader of the top of the file concluded the opposite of what the loader does. It
+# is corrected rather than removed, because the drafting history is the point: every
+# declaration below was DRAFTED by an AI agent and born `status: PROPOSED`, and none of
+# it took effect until a named human accepted it (`status: ACCEPTED` plus `accepted_by`
+# and `accepted_at`, at the declaration level AND at the pack level — the loader refuses
+# an acceptance with no human attached, and refuses an undated one).
+#
+# That sequence is the product's claim about itself: the system proposes, the customer
+# authors. An agent may draft this file and may never accept it.
 #
 # THERE IS NOT ONE `QUOTED` DECLARATION IN THIS FILE, AND THAT IS DELIBERATE.
 # QUOTED means "this rule is written in the customer's own source document", and its
@@ -22,8 +28,10 @@
 #   AUTHORED  — a judgement call, with a `because` a reviewer can argue with. Note the
 #               asymmetry: an AUTHORED *precedence* rule would be us deciding which of
 #               the customer's own instruments governs, which is the one thing this
-#               product exists to refuse. The two precedence entries below therefore
-#               propose that the conflict be SHOWN, not resolved, and they stay PROPOSED.
+#               product exists to refuse. So the two precedence entries below RESOLVE
+#               NOTHING: what the human accepted is a rule that SHOWS the conflict with
+#               both provenances and flags it, not one that picks a winner. Accepting a
+#               refusal to decide is not the same as deciding.
 #
 # This file is data. No code, no prompts, no model configuration belongs in it.
 # =============================================================================

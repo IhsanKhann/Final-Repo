@@ -594,3 +594,42 @@ def test_the_shipped_pack_names_who_accepted_it_and_when():
         pytest.skip("the shipped pack is a draft; nothing to attribute")
     assert (pack.accepted_by or "").strip()
     assert (pack.accepted_at or "").strip()
+
+
+def test_the_pack_header_does_not_contradict_the_pack_body():
+    """A comment that disagrees with the code is worse than no comment.
+
+    This file's header read "DRAFT -- PENDING HUMAN ACCEPTANCE. NOT YET A CUSTOMER PACK."
+    while its body said version 1.0.0, status ACCEPTED, accepted_by Ihsan Khan. A reader
+    of the top of the file concluded the exact opposite of what the loader does -- and for
+    a pack, the top of the file is where a reviewer looks to find out whether these rules
+    are in force.
+
+    Asserted against the PARSED pack rather than against fixed strings, so it keeps
+    working when the pack is accepted, superseded or re-drafted.
+    """
+    path = PACK_DIR / "banking_rates.yaml"
+    pack = load_pack(path)
+    header = "\n".join(
+        line for line in path.read_text(encoding="utf-8").splitlines() if line.startswith("#")
+    ).casefold()
+
+    if pack.status == "ACCEPTED":
+        assert "not yet a customer pack" not in header, (
+            "the header still calls this a draft while the body is ACCEPTED"
+        )
+        assert "accepted" in header, "an accepted pack's header does not say so"
+        assert (pack.accepted_by or "").casefold() in header, (
+            "the header does not name the human the body says accepted this pack"
+        )
+    else:
+        assert "accepted v" not in header, (
+            "the header announces an acceptance the body does not record"
+        )
+
+    # Law III's standing claim about this particular pack, checked rather than trusted.
+    quoted = [d for group in pack.groups.values() for d in group if d.provenance.tag == "QUOTED"]
+    if "there is not one `quoted` declaration in this file" in header:
+        assert not quoted, (
+            f"the header says there is no QUOTED declaration but the body has {len(quoted)}"
+        )
