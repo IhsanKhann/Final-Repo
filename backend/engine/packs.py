@@ -231,6 +231,12 @@ class Pack(_Strict):
     version: str = Field(min_length=1)
     description: str | None = None
     status: Literal["PROPOSED", "ACCEPTED"] = "PROPOSED"
+    #: Who accepted the pack as a whole, and when. Enforced exactly as it is per
+    #: declaration, because this is the level where naming the human matters MOST: a pack
+    #: accepted anonymously is the entire rulebook taking effect with nobody accountable
+    #: for it, and "we did not write the customer's rules" stops being checkable.
+    accepted_by: str | None = None
+    accepted_at: str | None = None
     updated_at: str = Field(min_length=1)
     #: Repo-relative data file every MEASURED declaration is counted against by default.
     measured_against: str | None = None
@@ -242,6 +248,30 @@ class Pack(_Strict):
     ambiguity: list[RuleDeclaration] = Field(default_factory=list)
 
     _source_file: str = PrivateAttr(default="")
+
+    @model_validator(mode="after")
+    def _acceptance_needs_a_human(self):
+        """The same rule as per declaration, at the level where it matters most.
+
+        Per-declaration acceptance was already enforced, but a pack as a whole could be
+        marked ACCEPTED with nobody named -- so the rulebook could take effect without an
+        accountable human, which is the one thing the provenance story exists to prevent.
+        An agent promoting its own draft looks exactly like a legitimate acceptance except
+        that nobody is named, so naming is the check.
+        """
+        if self.status == "ACCEPTED":
+            if not (self.accepted_by or "").strip():
+                raise ValueError(
+                    "a pack may not be ACCEPTED without `accepted_by` naming the person "
+                    "who accepted it; a drafted pack stays PROPOSED"
+                )
+            if not (self.accepted_at or "").strip():
+                raise ValueError(
+                    "a pack accepted without `accepted_at` cannot be audited: an "
+                    "undated acceptance cannot be placed before or after the run it "
+                    "governed"
+                )
+        return self
 
     @property
     def source_file(self) -> str:

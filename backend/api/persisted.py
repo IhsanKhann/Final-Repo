@@ -514,9 +514,9 @@ class PersistedService:
         order = self._field_order()
 
         rows: list[DatasetRecord] = []
-        # Grouped by (document, record), not by document. A rate sheet holds one record
-        # per product row; grouping by document alone showed one row of thirty and let
-        # the last value written win.
+        # Grouped by (document, record), not by document. One source document can hold
+        # many records; grouping by document alone showed one row of thirty and let the
+        # last value written win.
         grouped: dict[tuple[str, str], list[Mapping]] = {}
         for mapping in mappings:
             grouped.setdefault((mapping.document_id, keys.get(mapping.id, "")), []).append(

@@ -96,9 +96,9 @@ def to_rows(
     """One row per RECORD, with columns in the pack's declared order.
 
     `record_keys` maps a mapping id to which record inside its document it belongs to. A
-    document is not a record: a rate sheet holds one record per product row, and grouping
-    by document alone produced one row where there were thirty, with the last value
-    written winning. Omitting it keeps the old document-level grouping, which is correct
+    document is not a record: one source document can hold many, a spreadsheet holding one
+    per row, and grouping by document alone produced one row where there were thirty, with
+    the last value written winning. Omitting it keeps the old document-level grouping, which is correct
     only for a document that really is a single record.
 
     A mapping with no target field (the `missing` lane after a refusal) still contributes

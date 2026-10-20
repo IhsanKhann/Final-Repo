@@ -42,9 +42,9 @@ class LedgerEntry(BaseModel):
     run_id: str
     document_id: str
     mapping_id: str
-    #: Which record inside the document. Part of the version key: a rate sheet's 30 rows
-    #: are 30 separate cells, not 30 versions of one, and conflating them made the audit
-    #: trail misreport a re-run.
+    #: Which record inside the document. Part of the version key: a source document's
+    #: many records are many separate cells, not many versions of one, and conflating
+    #: them made the audit trail misreport a re-run.
     record_key: str = ""
     source_label: str
     target_field: str
@@ -167,10 +167,10 @@ class SqliteLedger(Ledger):
     def append(self, entry: LedgerEntry) -> LedgerEntry:
         """Add one version of one cell. Never replaces an earlier version."""
         with self._connect() as conn:
-            # The version key includes record_key. Without it a rate sheet's 30 product
-            # rows all claim to be the same cell and read as version 30 of one value --
-            # which both hides 29 records and makes a genuine re-run indistinguishable
-            # from a sibling row. Both halves are pinned by
+            # The version key includes record_key. Without it every record in a document
+            # claims to be the same cell, so thirty rows read as version 30 of one value --
+            # which both hides twenty-nine records and makes a genuine re-run
+            # indistinguishable from a sibling row. Both halves are pinned by
             # tests/test_a_document_can_hold_many_records.py.
             row = conn.execute(
                 "SELECT MAX(version) AS v FROM ledger "
@@ -223,7 +223,7 @@ class SqliteLedger(Ledger):
         """The current state of every cell in a document: one per (record, field).
 
         Grouped by record as well as field, because grouping by field alone returned three
-        rows for a sheet holding thirty records -- the newest row of each field, with the
+        rows for a source holding thirty records -- the newest row of each field, with the
         other twenty-nine silently dropped.
         """
         with self._connect() as conn:

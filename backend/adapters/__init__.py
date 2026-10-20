@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from backend.adapters import csv, html, pdf_scan, pdf_text, sheet
+from backend.adapters import csv, html, narrative, pdf_scan, pdf_text, sheet
 from backend.adapters.base import AdapterResult, unsupported
 
 #: media type -> the module that reads it. One entry per media type, not per format, so a
@@ -29,6 +29,9 @@ ADAPTERS: dict[str, Callable[..., AdapterResult]] = {
     **{media_type: sheet.extract_document for media_type in sheet.MEDIA_TYPES},
     **{media_type: html.extract_document for media_type in html.MEDIA_TYPES},
     **{media_type: pdf_text.extract_document for media_type in pdf_text.MEDIA_TYPES},
+    # Narrative disclosures: the fifth technical requirement, and the one document
+    # type where the mapper agent earns its place -- there is no heading to match.
+    **{media_type: narrative.extract_document for media_type in narrative.MEDIA_TYPES},
 }
 
 

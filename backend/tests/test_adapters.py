@@ -375,19 +375,28 @@ def test_one_bad_file_does_not_end_the_batch(documents):
     assert empty[0].page_count == 2
 
 
-def test_the_narrative_document_has_no_adapter_in_this_package(documents):
-    """Stated rather than implied: prose is the extractor agent's job, not a parser's.
+def test_the_narrative_document_is_read_by_this_package(documents):
+    """Reframed, not deleted: this test used to assert prose had no adapter at all.
 
-    The generator emits a narrative disclosure because the problem statement asks for one,
-    and nothing in `adapters/` claims to read it. A caller gets `unsupported` -- which is
-    not an error -- instead of a parser quietly returning nothing from a file it cannot
-    handle.
+    That absence was a real gap -- "narrative disclosures" is one of the five technical
+    requirements and the disclosure yielded zero facts -- so the adapter was written and
+    the assertion inverted. Kept rather than removed because the narrative path is the one
+    a reader will assume is missing, and the file should say plainly that it is not.
+
+    What the adapter promises here is ingestion and provenance. It does NOT promise to
+    decide what a figure in a sentence means; that is the mapper's job, and
+    test_narrative_adapter.py holds the detail.
     """
     data, media_type = documents["Summit Trust"]
     assert media_type == "text/plain"
-    assert media_type not in ADAPTERS
+    assert media_type in ADAPTERS
     result = dispatch(data, media_type, document_id="d-narrative")
-    assert result.status == "unsupported"
+    assert result.status == "done"
+    assert result.facts, "prose with figures in it produced no facts"
+    source = data.decode("utf-8")
+    for fact in result.facts:
+        location = fact.source_location
+        assert source[location.start : location.end] == fact.raw_value
 
 
 def test_an_unregistered_media_type_is_unsupported_not_an_error():

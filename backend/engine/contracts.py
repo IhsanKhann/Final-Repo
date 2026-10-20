@@ -413,10 +413,11 @@ class ExtractedFact(Boundary):
     raw_value: str
     raw_unit: str | None = None
     source_location: SourceLocation
-    #: Which RECORD inside the document this fact belongs to -- a rate sheet holds one
-    #: record per product row, not one record per file. Set deterministically by the
-    #: adapter, which is the only layer that knows the document's own structure (a sheet
-    #: row number, an HTML table row index, a PDF table row).
+    #: Which RECORD inside the document this fact belongs to. One source document can
+    #: hold many records -- a spreadsheet holds one per row -- so a document is not a
+    #: record. Set deterministically by the adapter, which is the only layer that knows
+    #: the document's own structure (a sheet row number, an HTML table row index, a PDF
+    #: table row).
     #:
     #: Empty means "this document is a single record", which is the honest degenerate case
     #: for a narrative disclosure. It is a default rather than a required field so that

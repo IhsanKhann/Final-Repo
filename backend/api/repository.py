@@ -197,8 +197,8 @@ CREATE INDEX IF NOT EXISTS ix_documents_batch ON documents (tenant_id, batch_id)
 CREATE TABLE IF NOT EXISTS mappings (
     tenant_id TEXT NOT NULL, id TEXT NOT NULL, document_id TEXT, target_field TEXT,
     source_label TEXT, status TEXT, confidence REAL, updated_at TEXT, body TEXT NOT NULL,
-    -- Which record inside the document. A rate sheet holds one record per product row,
-    -- and grouping the gold table by document alone showed 1 row where there were 30.
+    -- Which record inside the document. One source document can hold many records, so
+    -- grouping the gold table by document alone showed 1 row where there were 30.
     -- It is a column rather than a field on Mapping because types.ts does not declare
     -- one; if it gains `record_key?`, this column and list_mapping_records go away.
     record_key TEXT NOT NULL DEFAULT '',

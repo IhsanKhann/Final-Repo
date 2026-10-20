@@ -540,3 +540,57 @@ def test_the_loader_knows_no_word_of_the_customers_subject_matter():
         f"positive control failed: the scanner cannot find {missed} even in the pack, so "
         "its silence over the loader means nothing"
     )
+
+
+# --- acceptance at the pack level --------------------------------------------
+# Per-declaration acceptance was enforced from the start; the pack as a whole was not, so
+# an entire rulebook could take effect with nobody accountable for it. These pin the level
+# where naming the human matters most.
+
+
+def test_a_pack_accepted_with_nobody_named_is_refused(tmp_path):
+    source = (PACK_DIR / "banking_rates.yaml").read_text(encoding="utf-8")
+    broken = source.replace('accepted_by: Ihsan Khan\naccepted_at: "2026-10-20"\n', "", 1)
+    assert broken != source, "the fixture no longer contains the pack-level acceptance"
+
+    target = tmp_path / "anonymous.yaml"
+    target.write_text(broken, encoding="utf-8")
+    with pytest.raises(PackError) as caught:
+        load_pack(target)
+    assert "accepted_by" in str(caught.value)
+
+
+def test_a_pack_accepted_without_a_date_is_refused(tmp_path):
+    source = (PACK_DIR / "banking_rates.yaml").read_text(encoding="utf-8")
+    undated = source.replace('accepted_at: "2026-10-20"\nupdated_at:', "updated_at:", 1)
+    assert undated != source, "the fixture no longer contains the pack-level accepted_at"
+
+    target = tmp_path / "undated.yaml"
+    target.write_text(undated, encoding="utf-8")
+    with pytest.raises(PackError) as caught:
+        load_pack(target)
+    assert "accepted_at" in str(caught.value)
+
+
+def test_a_proposed_pack_needs_no_acceptance_fields(tmp_path):
+    """Drafting stays free. The gate is on taking effect, not on writing one down."""
+    source = (PACK_DIR / "banking_rates.yaml").read_text(encoding="utf-8")
+    # Anchored on newlines: the file's header comment also contains the words
+    # "status: ACCEPTED", and an unanchored replace rewrites the prose instead of the field.
+    drafted = source.replace("\nstatus: ACCEPTED\n", "\nstatus: PROPOSED\n", 1).replace(
+        'accepted_by: Ihsan Khan\naccepted_at: "2026-10-20"\n', "", 1
+    )
+    assert "\nstatus: PROPOSED\n" in drafted, "the pack-level status was not rewritten"
+    target = tmp_path / "drafted.yaml"
+    target.write_text(drafted, encoding="utf-8")
+    pack = load_pack(target)
+    assert pack.status == "PROPOSED"
+    assert pack.accepted_by is None
+
+
+def test_the_shipped_pack_names_who_accepted_it_and_when():
+    pack = load_pack(PACK_DIR / "banking_rates.yaml")
+    if pack.status != "ACCEPTED":
+        pytest.skip("the shipped pack is a draft; nothing to attribute")
+    assert (pack.accepted_by or "").strip()
+    assert (pack.accepted_at or "").strip()

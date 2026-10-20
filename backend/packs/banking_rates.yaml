@@ -35,6 +35,12 @@ description: >-
   Deposit-rate reporting fields, drafted from the columns of
   data/samples/ps06_sample_rate_sheets.csv. Accepted by the pack owner.
 status: ACCEPTED
+# The loader now requires these at the pack level as well as per declaration: a pack
+# accepted anonymously is the whole rulebook taking effect with nobody accountable for it.
+# Transcribed from what is already recorded on all 16 declarations below, not newly
+# asserted here.
+accepted_by: Ihsan Khan
+accepted_at: "2026-10-20"
 updated_at: "2026-10-20T00:00:00Z"
 
 # The dataset every MEASURED declaration below was counted against, repo-root relative.
