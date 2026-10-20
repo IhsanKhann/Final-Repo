@@ -200,7 +200,7 @@ def _report(round_number: int, **overrides) -> RoundReport:
         pack_id="p1",
         pack_version="1.0.0",
         model="pinned-model",
-        temperature=0.0,
+        sampling="temperature=0",
         prompt_version="v1",
         documents_fingerprint="abc123",
         docs=6,
@@ -234,7 +234,9 @@ def test_two_rounds_on_the_same_inputs_report_a_delta():
     "moved",
     [
         {"model": "a-different-model"},
-        {"temperature": 0.7},
+        # The anthropic dialect sends no temperature at all, so a round run against it is
+        # not comparable with an openai-dialect round however the code intended it.
+        {"sampling": "not-sent: removed by provider"},
         {"prompt_version": "v2"},
         {"pack_version": "1.1.0"},
         {"documents_fingerprint": "different"},

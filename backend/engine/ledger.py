@@ -60,7 +60,8 @@ class LedgerEntry(BaseModel):
     pack_version: str | None = None
     model: str | None = None
     prompt_version: str | None = None
-    temperature: float | None = None
+    #: What was sent, not what was intended -- see RoundReport.sampling.
+    sampling: str | None = None
     reason: str | None = None
     reviewed_by: str | None = None
     approved_by: str | None = None

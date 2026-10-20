@@ -499,7 +499,12 @@ class RoundReport(Boundary):
     pack_id: str
     pack_version: str
     model: str
-    temperature: float
+    #: What was actually SENT, never what was intended: "temperature=0" for an
+    #: openai-dialect provider, or "not-sent: removed by provider" for the anthropic
+    #: dialect, where temperature/top_p/top_k are removed and any value is a 400.
+    #: Printing "temperature 0" for a provider that cannot accept it would be a false
+    #: claim about a controlled variable (CLAUDE.md 4).
+    sampling: str
     prompt_version: str
     documents_fingerprint: str
     docs: int

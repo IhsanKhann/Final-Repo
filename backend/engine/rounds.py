@@ -23,11 +23,14 @@ from typing import Iterable, Sequence
 from backend.engine.contracts import Mapping, RoundReport
 
 #: The five variables that must not move between rounds, by RoundReport field name.
+#: `sampling` rather than `temperature`, because what matters is what was sent: a round
+#: run against the anthropic dialect sent no temperature at all, and comparing it against
+#: an openai-dialect round is not comparable on this variable however the code intended it.
 CONTROLLED_VARIABLES: tuple[str, ...] = (
     "documents_fingerprint",
     "pack_version",
     "model",
-    "temperature",
+    "sampling",
     "prompt_version",
 )
 

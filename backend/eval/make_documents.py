@@ -587,27 +587,41 @@ def _build_pacific(rows: list[Row]) -> dict:
     }
 
 
+_SUMMIT = "Summit Trust"
+
+
 def _build_summit(rows: list[Row]) -> dict:
     """No table at all: the same quantities buried in sentences, which is the extractor
-    agent's case rather than a parser's."""
+    agent's case rather than a parser's.
+
+    The phrases are the golden set's `labels` verbatim, so each sentence is built around
+    them and each value sits immediately after the phrase that claims it. A demand product
+    still reads "for a term of 0 months" -- clumsy prose, but 0 is a real value (no term),
+    and replacing it with "none" would make the figure unrecoverable.
+    """
+    labels = _labels(_SUMMIT)
+    # "pays ... annually" is a label with a hole in it, not a substring, so the sentence is
+    # built from its two halves rather than from a hand-copied phrase.
+    rate_before, rate_after = (part.strip() for part in labels["rate_pct"].split("..."))
     truths: list[dict] = []
     paragraphs = [
-        "Summit Trust",
+        _SUMMIT,
         "Deposit Disclosure Statement",
         "",
         "The rates described below are offered to personal depositors at all branches.",
         "",
     ]
     for row in rows:
-        term = (
-            "with no fixed term"
-            if row.term_months == 0
-            else f"on a {row.term_months}-month term"
-        )
+        term_text = f"{row.term_months} months"
+        if row.term_months == 0:
+            term_text += " (payable on demand)"
+        money = _money(row.min_deposit)
+        date_text = _long(row.effective_date)
         sentence = (
-            f"The {row.product} account {term} pays {row.rate_text}% annually on balances "
-            f"over {_money(row.min_deposit)}, for an annual percentage yield of "
-            f"{row.apy_text}%. This rate is effective {_long(row.effective_date)}."
+            f"The {row.product} account, {labels['term_months']} {term_text}, "
+            f"{rate_before} {row.rate_text}% {rate_after} on {labels['min_deposit']} {money}, "
+            f"with an {labels['apy_pct']} {row.apy_text}%, "
+            f"{labels['effective_date']} {date_text}."
         )
         paragraphs.append(sentence)
         paragraphs.append("")
@@ -616,31 +630,25 @@ def _build_summit(rows: list[Row]) -> dict:
                 row,
                 page=None,
                 as_written={
-                    "product": row.product,
-                    "term": term,
-                    "annual rate": f"{row.rate_text}%",
-                    "annual percentage yield": f"{row.apy_text}%",
-                    "balances over": _money(row.min_deposit),
-                    "effective": _long(row.effective_date),
+                    _PRODUCT_HEADING: row.product,
+                    labels["term_months"]: term_text,
+                    labels["rate_pct"]: f"{row.rate_text}%",
+                    labels["apy_pct"]: f"{row.apy_text}%",
+                    labels["min_deposit"]: money,
+                    labels["effective_date"]: date_text,
                 },
                 note="Narrative prose: no table, no headings. One sentence per record.",
             )
         )
-    paragraphs.append("Rates are subject to change at the discretion of Summit Trust.")
+    paragraphs.append(f"Rates are subject to change at the discretion of {_SUMMIT}.")
     paragraphs.append("")
     return {
         "file": "summit_trust_disclosure.txt",
         "media_type": "text/plain",
-        "format": "text",
+        "format": _declared_format(_SUMMIT),
         "bytes": "\n".join(paragraphs).encode("utf-8"),
         "rows": truths,
-        "header_map": {
-            "annual rate": "interest_rate_annual_pct",
-            "annual percentage yield": "annual_percentage_yield_pct",
-            "balances over": "minimum_deposit_usd",
-            "term": "term_months",
-            "effective": "effective_date",
-        },
+        "header_map": _header_map(_SUMMIT),
     }
 
 
@@ -650,16 +658,20 @@ def _build_summit(rows: list[Row]) -> dict:
 _FOOTNOTE_DELTA_PCT = 0.15
 
 
+_VALLEY = "Valley Community Bank"
+
+
 def _build_valley(rows: list[Row]) -> dict:
-    headers = ("Product", "Term", "Rate (% p.a.)", "APY (%)", "Min Bal", "Effective")
+    """Its two rate headings carry the footnote marker the golden set declares (`Rate*`),
+    and the footnote under each page disagrees with the row it points at."""
+    headers = _headers(_VALLEY)
     doc = fitz.open()
     truths: list[dict] = []
     for page_no, page_rows in enumerate(_paginate(rows), start=1):
         body = []
         for position, row in enumerate(page_rows):
-            term = "-" if row.term_months == 0 else f"{row.term_months}m"
             cells = (
-                row.product, term, row.rate_text, row.apy_text,
+                row.product, str(row.term_months), row.rate_text, row.apy_text,
                 _money(row.min_deposit), _iso(row.effective_date),
             )
             body.append(cells)
@@ -691,7 +703,7 @@ def _build_valley(rows: list[Row]) -> dict:
         )
         _paint_table_page(
             doc,
-            title="Valley Community Bank",
+            title=_VALLEY,
             subtitle=f"Schedule of Deposit Rates - page {page_no}",
             headers=headers,
             body=body,
@@ -702,29 +714,22 @@ def _build_valley(rows: list[Row]) -> dict:
     return {
         "file": "valley_community_bank_rates.pdf",
         "media_type": "application/pdf",
-        "format": "pdf_text",
+        "format": _declared_format(_VALLEY),
         "bytes": payload,
         "rows": truths,
-        "header_map": {
-            "Product": "product_type",
-            "Term": "term_months",
-            "Rate (% p.a.)": "interest_rate_annual_pct",
-            "APY (%)": "annual_percentage_yield_pct",
-            "Min Bal": "minimum_deposit_usd",
-            "Effective": "effective_date",
-        },
+        "header_map": _header_map(_VALLEY),
     }
 
 
 #: Institution -> builder. A tuple, not a dict comprehension, because the output order of
 #: ground_truth.json is part of the fixture.
 BUILDERS = (
-    ("First National Bank", _build_first_national),
-    ("Metro Credit Union", _build_metro),
-    ("Heritage Financial", _build_heritage),
-    ("Pacific Savings", _build_pacific),
-    ("Summit Trust", _build_summit),
-    ("Valley Community Bank", _build_valley),
+    (_FIRST_NATIONAL, _build_first_national),
+    (_METRO, _build_metro),
+    (_HERITAGE, _build_heritage),
+    (_PACIFIC, _build_pacific),
+    (_SUMMIT, _build_summit),
+    (_VALLEY, _build_valley),
 )
 
 
