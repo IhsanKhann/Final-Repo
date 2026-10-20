@@ -42,6 +42,10 @@ class LedgerEntry(BaseModel):
     run_id: str
     document_id: str
     mapping_id: str
+    #: Which record inside the document. Part of the version key: a rate sheet's 30 rows
+    #: are 30 separate cells, not 30 versions of one, and conflating them made the audit
+    #: trail misreport a re-run.
+    record_key: str = ""
     source_label: str
     target_field: str
     raw_value: str
@@ -136,6 +140,7 @@ class SqliteLedger(Ledger):
                     run_id        TEXT NOT NULL,
                     document_id   TEXT NOT NULL,
                     mapping_id    TEXT NOT NULL,
+                    record_key    TEXT NOT NULL DEFAULT '',
                     source_label  TEXT NOT NULL,
                     target_field  TEXT NOT NULL,
                     version       INTEGER NOT NULL,
@@ -145,7 +150,7 @@ class SqliteLedger(Ledger):
                     created_at    TEXT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS ledger_cell
-                    ON ledger (tenant_id, document_id, target_field, version);
+                    ON ledger (tenant_id, document_id, record_key, target_field, version);
                 CREATE INDEX IF NOT EXISTS ledger_run ON ledger (tenant_id, run_id);
                 CREATE INDEX IF NOT EXISTS ledger_mapping
                     ON ledger (tenant_id, mapping_id);
@@ -162,10 +167,15 @@ class SqliteLedger(Ledger):
     def append(self, entry: LedgerEntry) -> LedgerEntry:
         """Add one version of one cell. Never replaces an earlier version."""
         with self._connect() as conn:
+            # The version key includes record_key. Without it a rate sheet's 30 product
+            # rows all claim to be the same cell and read as version 30 of one value --
+            # which both hides 29 records and makes a genuine re-run indistinguishable
+            # from a sibling row. Both halves are pinned by
+            # tests/test_a_document_can_hold_many_records.py.
             row = conn.execute(
                 "SELECT MAX(version) AS v FROM ledger "
-                "WHERE tenant_id=? AND document_id=? AND target_field=?",
-                (entry.tenant_id, entry.document_id, entry.target_field),
+                "WHERE tenant_id=? AND document_id=? AND record_key=? AND target_field=?",
+                (entry.tenant_id, entry.document_id, entry.record_key, entry.target_field),
             ).fetchone()
             next_version = 1 if row is None or row["v"] is None else int(row["v"]) + 1
 
@@ -178,14 +188,15 @@ class SqliteLedger(Ledger):
             sealed = sealed.model_copy(update={"entry_hash": compute_hash(sealed)})
 
             conn.execute(
-                "INSERT INTO ledger (tenant_id,run_id,document_id,mapping_id,source_label,"
-                "target_field,version,payload,prev_hash,entry_hash,created_at) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO ledger (tenant_id,run_id,document_id,mapping_id,record_key,"
+                "source_label,target_field,version,payload,prev_hash,entry_hash,created_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     sealed.tenant_id,
                     sealed.run_id,
                     sealed.document_id,
                     sealed.mapping_id,
+                    sealed.record_key,
                     sealed.source_label,
                     sealed.target_field,
                     sealed.version,
@@ -209,12 +220,18 @@ class SqliteLedger(Ledger):
         return [LedgerEntry.model_validate_json(r["payload"]) for r in rows]
 
     def latest_for_document(self, document_id: str, tenant_id: str = "demo") -> list[LedgerEntry]:
+        """The current state of every cell in a document: one per (record, field).
+
+        Grouped by record as well as field, because grouping by field alone returned three
+        rows for a sheet holding thirty records -- the newest row of each field, with the
+        other twenty-nine silently dropped.
+        """
         with self._connect() as conn:
             rows = conn.execute(
                 "SELECT payload FROM ledger WHERE seq IN ("
                 "  SELECT MAX(seq) FROM ledger WHERE tenant_id=? AND document_id=? "
-                "  GROUP BY target_field"
-                ") ORDER BY target_field ASC",
+                "  GROUP BY record_key, target_field"
+                ") ORDER BY record_key, target_field ASC",
                 (tenant_id, document_id),
             ).fetchall()
         return [LedgerEntry.model_validate_json(r["payload"]) for r in rows]
