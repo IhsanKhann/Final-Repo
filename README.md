@@ -158,9 +158,6 @@ that a lookup table wins 100% and a model wins 97% inexplicably.
 
 ---
 
-<<<<<<< HEAD
-## 🚀 Running Locally
-=======
 ## 4. The contract — the frontend's `types.ts` is law
 
 `Frontend/src/api/types.ts` was written first and **the backend conforms to it.** Do not
@@ -289,12 +286,8 @@ provider failure maps to a named state: `no-key`, `bad-key`, `model-unavailable`
 
 ## 7. Run it locally
 
-### Frontend (works today, with mocks, no backend needed)
->>>>>>> b742aed1b2abf3113fb78d18e39db7bcbac6a1a4
-
-### 1. Start the Node.js Backend
+### 1. Start the Backend
 ```bash
-<<<<<<< HEAD
 cd doc-standardization-pipeline/backend
 npm install
 npm start
@@ -310,17 +303,7 @@ npm run dev
 ```
 > Running on **http://localhost:5173**  
 > Automatically proxies `/api` calls to the Node.js backend.
-=======
-cd Frontend
-npm install
-npm run dev            # http://localhost:5173
-```
 
-`Frontend/.env`:
-```
-VITE_USE_MOCK=true                  # flip to false once the backend is up
-VITE_API_URL=http://localhost:8000
-```
 
 ### Backend (session 2)
 
