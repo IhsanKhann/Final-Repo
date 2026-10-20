@@ -51,6 +51,7 @@ from backend.engine.config import DEFAULT_TENANT, ConfigStore, control
 from backend.engine.gate import DEFAULT_AUTO_THRESHOLD, DEFAULT_REVIEW_THRESHOLD
 from backend.engine.ledger import Ledger, LedgerEntry, SqliteLedger
 from backend.engine.contracts import (
+    LearnedCorrection,
     AgentEvent,
     Authority,
     Batch,
@@ -1221,8 +1222,33 @@ class PersistedService:
                 else 0.0
             ),
             runs=runs,
-            learned_corrections=[],
+            # Every correction an analyst made, newest first. This was [] while the
+            # precedent store was already filling, so the one screen whose job is to show
+            # that the loop learned showed nothing -- the feedback claim had no evidence
+            # on it. Read from feedback events rather than precedents because a REJECT
+            # teaches nothing and writes no precedent, yet it is still a correction the
+            # analyst made and should see.
+            learned_corrections=self._learned_corrections(tenant_id),
         )
+
+    def _learned_corrections(self, tenant_id: str) -> list[LearnedCorrection]:
+        out: list[LearnedCorrection] = []
+        for event in reversed(self._repo.list_feedback(tenant_id=tenant_id)):
+            if not event.to_field:
+                continue  # a reject teaches no field; it is not a learned correction
+            out.append(
+                LearnedCorrection(
+                    id=event.id,
+                    field=event.to_field,
+                    from_value=event.from_field or "(unmapped)",
+                    to_value=event.to_field,
+                    document_name=event.document_id,
+                    learned_at=getattr(event, "ts", None) or "",
+                )
+            )
+            if len(out) >= 50:
+                break
+        return out
 
     # -- health ----------------------------------------------------------------
 

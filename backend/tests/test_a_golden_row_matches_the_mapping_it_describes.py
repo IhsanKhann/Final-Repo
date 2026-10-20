@@ -75,6 +75,10 @@ def client(tmp_path, monkeypatch) -> TestClient:
     monkeypatch.setenv("LEDGER_DB_PATH", str(tmp_path / "ledger.db"))
     monkeypatch.delenv("PIPELINE", raising=False)
     monkeypatch.delenv("USE_FIXTURES", raising=False)
+    # Named, not discovered. A second pack now ships, so a run that does not say which
+    # rulebook governs it is refused before any document is read -- and a scoring test
+    # that let the loader guess would start measuring a different pack's decisions.
+    monkeypatch.setenv("ACTIVE_PACK_ID", "banking_rates")
     deps.reset_wiring()
     try:
         yield TestClient(create_app())
@@ -117,7 +121,9 @@ def _row(gold_id: str, **overrides) -> GoldenRow:
     data = dict(
         gold_id=gold_id,
         institution_name="an institution",
-        document_file="a_document.pdf",
+        # One document per row unless a test says otherwise: these fixtures are about the
+        # key, so two rows sharing a key has to be something a test asked for.
+        document_file=f"{gold_id.lower()}.pdf",
         document_format="pdf_text",
         product_type="a product",
         source_label="a label",
