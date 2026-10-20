@@ -339,8 +339,13 @@ def make_store() -> ConfigStore:
     if kind == "sqlite":
         return SqliteStore()
     if kind == "firestore":
-        raise NotImplementedError(
-            "FirestoreStore belongs to the infra lane. Set CONFIG_STORE=sqlite to run locally."
+        # Deferred import: the google-cloud-firestore dependency and its network client
+        # must not be required to start the backend locally.
+        from backend.engine.firestore_store import FirestoreStore
+
+        return FirestoreStore(
+            project_id=os.environ.get("GCP_PROJECT_ID") or None,
+            database=os.environ.get("FIRESTORE_DATABASE") or None,
         )
     raise ValueError(f"unknown CONFIG_STORE {kind!r}; expected 'sqlite' or 'firestore'")
 

@@ -149,6 +149,7 @@ def resolve(
     reason_parts: list[str] = []
     used_model = False
     model_call_skipped = False
+    constrained_proposal = False
 
     # 1. Highest authority first. The pack is the customer's own word.
     if pack_match is not None and pack_match.target_field in declared:
@@ -184,6 +185,10 @@ def resolve(
             authority = proposal.authority
             confidence = proposal.confidence
             reason_parts.append(proposal.reason)
+            # Retrieval constrained the choice to declared fields, so a low score here
+            # means "I am unsure which of your fields this is", not "I may have invented
+            # one". The gate offers it to a reviewer instead of discarding it.
+            constrained_proposal = proposal.used_model
         else:
             forced.append("out-of-declared-fields")
             reason_parts.append(
@@ -227,6 +232,7 @@ def resolve(
             has_provenance=fact.source_location is not None,
             forced_review=tuple(dict.fromkeys(forced)),
             verifier_rejected=False,
+            constrained_proposal=constrained_proposal,
         ),
         auto_threshold=auto_threshold,
         review_threshold=review_threshold,

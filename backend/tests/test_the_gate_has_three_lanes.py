@@ -87,6 +87,35 @@ def test_a_model_inventing_a_field_is_refused_rather_than_reviewed():
     assert decision.status == "missing"
 
 
+def test_a_constrained_model_proposal_is_offered_to_a_reviewer_not_discarded():
+    """Measured case: a real model mapped an undeclared label onto the RIGHT field at 0.40.
+
+    Filed as `missing`, that correct answer was never shown, the analyst re-did it from
+    scratch, and no precedent was written -- so the feedback loop learned nothing from
+    exactly the case it exists for. Retrieval constrains the model to declared fields, so a
+    low score means "unsure which of your fields" and not "may have invented one".
+    """
+    decision = decide(_at(0.40, constrained_proposal=True))
+    assert decision.status == "review"
+    assert "declares" in decision.reason
+
+
+def test_a_constrained_proposal_still_does_not_reach_auto_on_a_low_score():
+    """Offering it to a human is not the same as claiming it. The auto bar does not move."""
+    assert decide(_at(0.40, constrained_proposal=True)).status == "review"
+    assert decide(_at(0.89, constrained_proposal=True)).status == "review"
+    assert decide(_at(0.95, constrained_proposal=True)).status == "auto"
+
+
+def test_without_a_constrained_proposal_the_floor_still_applies():
+    """The floor keeps its job for anything we would otherwise CLAIM."""
+    assert decide(_at(0.40)).status == "missing"
+
+
+def test_a_constrained_proposal_does_not_rescue_a_field_with_no_value():
+    assert decide(_at(0.40, constrained_proposal=True, has_value=False)).status == "missing"
+
+
 @pytest.mark.parametrize(
     "forced",
     ["magnitude-suspect", "no-conversion-rule", "validation-failed", "ambiguity-declared-by-pack"],

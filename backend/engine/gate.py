@@ -63,6 +63,10 @@ class GateInput(BaseModel):
     #: A verifier rejection. The field is dropped, not downgraded: there is no such thing
     #: here as a low-confidence claim that survives verification.
     verifier_rejected: bool = False
+    #: True when the value came from a model choosing among candidates the pack declares.
+    #: Such a proposal never drops below `review`, however low its confidence -- see the
+    #: reasoning at the branch in `decide`.
+    constrained_proposal: bool = False
 
 
 class GateDecision(BaseModel):
@@ -127,6 +131,24 @@ def decide(
             "review",
             f"confidence {gate_input.confidence:.2f} between {review_threshold:.2f} "
             f"and {auto_threshold:.2f}",
+        )
+
+    # Below the floor, but a model choosing from the pack's own declared fields still goes
+    # to a human rather than being discarded. Measured case: a real model mapped an
+    # undeclared label onto the right field at confidence 0.40 and said honestly that it
+    # was reasoning by concept rather than by match. Filed as `missing`, that correct
+    # answer was never shown, the analyst re-did it from scratch, and no precedent was
+    # written -- so the feedback loop learned nothing from exactly the case it exists for.
+    #
+    # The floor is not protecting us here: retrieval constrains the choice to declared
+    # fields, so the model cannot invent one. What the floor is for is a value we would
+    # otherwise CLAIM, and a review-lane row claims nothing -- it asks.
+    if gate_input.constrained_proposal:
+        return made(
+            "review",
+            f"confidence {gate_input.confidence:.2f} is below {review_threshold:.2f}, but "
+            "this names a field the pack declares, so it is offered to a reviewer rather "
+            "than discarded",
         )
 
     return made(
