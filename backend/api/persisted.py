@@ -235,17 +235,28 @@ class PersistedService:
 
     # -- packs -----------------------------------------------------------------
 
+    def _active_pack_or_reason(self) -> tuple[packs_module.Pack | None, str | None]:
+        """The governing pack, or None and the loader's own reason for refusing.
+
+        The reason is carried rather than discarded because the two cases are not the
+        same problem and do not have the same fix: a malformed pack needs its YAML
+        corrected, while several valid packs need an operator to say which one governs.
+        Substituting one sentence for both sends whoever reads it hunting for a broken
+        file that does not exist.
+        """
+        try:
+            configured = control("active_pack_id", store=self._config_store).value
+            return packs_module.resolve_active_pack(configured or ""), None
+        except Exception as exc:
+            return None, str(exc).strip() or type(exc).__name__
+
     def _active_pack(self) -> packs_module.Pack | None:
         """The pack that governs a run, or None if none is loadable.
 
         Returns None rather than raising: a malformed pack must block a RUN, not the
         Schema page that a human needs in order to see what is wrong with it.
         """
-        try:
-            configured = control("active_pack_id", store=self._config_store).value
-            return packs_module.resolve_active_pack(configured or "")
-        except Exception:
-            return None
+        return self._active_pack_or_reason()[0]
 
     def list_packs(self, *, tenant_id: str = DEFAULT_TENANT) -> list[SchemaPack]:
         try:
@@ -301,7 +312,7 @@ class PersistedService:
         file never ends a run, and the reason is recorded on the document and as an event
         rather than raised.
         """
-        pack = self._active_pack()
+        pack, pack_reason = self._active_pack_or_reason()
         seam = self._inference_seam(tenant_id)
 
         # Every operator-settable thing this run obeys is resolved HERE, once, before a
@@ -505,7 +516,7 @@ class PersistedService:
                     )
                     file_status, error = "unsupported", unclaimed.detail
                 elif pack is None:
-                    file_status, error = "error", "no pack is loadable, so no run can be governed"
+                    file_status, error = "error", pack_reason or "no governing pack"
                 else:
                     read_any = True
                     outcome = process_document(
@@ -1256,7 +1267,7 @@ class PersistedService:
         """The layers only the pipeline can speak for, including why a metric is absent."""
         layers: list[HealthLayer] = []
 
-        pack = self._active_pack()
+        pack, pack_reason = self._active_pack_or_reason()
         layers.append(
             HealthLayer(
                 name="Pack",
@@ -1265,7 +1276,7 @@ class PersistedService:
                     f"{pack.id} v{pack.version} ({pack.status.lower()}), "
                     f"{len(pack.fields)} field(s) | source=packs/"
                     if pack
-                    else "no pack is loadable, so no run can be governed | source=packs/"
+                    else f"{pack_reason or 'no governing pack'} | source=packs/"
                 ),
             )
         )
