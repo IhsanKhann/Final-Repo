@@ -96,7 +96,10 @@ CONTROLS: dict[str, ControlSpec] = {
             default=0.60,
             cast="float",
         ),
-        ControlSpec(key="active_pack_id", env_var="ACTIVE_PACK_ID", default="banking_rates"),
+        # Deliberately empty rather than naming a pack. A pack id is a domain noun, and
+        # Law II keeps those out of the engine -- so an unset value means "the single pack
+        # present in packs/", which the loader resolves by discovery.
+        ControlSpec(key="active_pack_id", env_var="ACTIVE_PACK_ID", default=""),
         ControlSpec(
             key="async_page_threshold", env_var="ASYNC_PAGE_THRESHOLD", default=15, cast="int"
         ),

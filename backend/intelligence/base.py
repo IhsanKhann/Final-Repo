@@ -47,7 +47,10 @@ class TransportReply(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     status: int
-    json: dict[str, Any] | None = None
+    #: The decoded JSON body, or None when the body was not a JSON object. Named
+    #: `payload` rather than `json` because a pydantic field called `json` shadows
+    #: BaseModel.json and warns.
+    payload: dict[str, Any] | None = None
     text: str = ""
 
 
@@ -109,7 +112,7 @@ def httpx_transport() -> Transport:
                 payload = None
             return TransportReply(
                 status=response.status_code,
-                json=payload if isinstance(payload, dict) else None,
+                payload=payload if isinstance(payload, dict) else None,
                 text=response.text,
             )
 
@@ -311,9 +314,9 @@ class Seam:
                     reason="provider-down", detail=f"{type(exc).__name__}: {exc}"
                 )
 
-            failure = prov.classify_http_status(reply.status, reply.json or reply.text)
+            failure = prov.classify_http_status(reply.status, reply.payload or reply.text)
             if failure is None:
-                parsed = prov.parse_response(self.provider.dialect, reply.json or {})
+                parsed = prov.parse_response(self.provider.dialect, reply.payload or {})
                 if self.budget is not None:
                     self.budget.charge(parsed.usage.total_tokens)
                 return parsed
@@ -328,7 +331,7 @@ class Seam:
             return Unavailable(
                 reason=failure.value,
                 detail=f"HTTP {reply.status} from {self.provider.id}: "
-                f"{(reply.text or str(reply.json or ''))[:400]}",
+                f"{(reply.text or str(reply.payload or ''))[:400]}",
             )
 
         return Unavailable(

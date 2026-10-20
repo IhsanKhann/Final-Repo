@@ -123,10 +123,33 @@ resume rather than restart).
 **Not agents, on purpose:** ingestion, unit conversion, the gate, the feedback write-back,
 the export. If you are tempted to add a fourth agent, the answer is no.
 
-Model settings are non-negotiable: **temperature 0**, pinned model version, structured
-output with an enforced response schema, per-document token budget, hard timeout,
-exponential backoff on 429. A non-conforming reply is one retry, then `Unavailable` — and
-`Unavailable` means the field goes to the review tray. It never means a guess.
+Model settings: **pinned model version**, **structured output with an enforced response
+schema**, per-document token budget, hard timeout, exponential backoff on 429.
+
+**Temperature is provider-dependent, and getting it wrong is a 400, not a warning.**
+
+| Dialect | Sampling | What carries determinism |
+|---|---|---|
+| OpenAI (incl. OpenRouter, Vertex's compat endpoint) | send `temperature=0` | temperature + pinned model + structured output |
+| Anthropic | **send nothing** | pinned model + structured output + pinned `effort` |
+
+On current Claude models `temperature`, `top_p` and `top_k` are **removed**: Fable 5/5.1,
+Opus 5.5/5/4.8/4.7 and Sonnet 5 return a 400 for any value, and Sonnet 5.5 / Haiku 5.5
+reject any non-default value — so `temperature=0` fails there too. `seed` does not exist in
+the Anthropic API at all. The anthropic dialect omits the field entirely.
+
+**Record what was sent, never what was intended.** `RoundReport.sampling` is
+`"temperature=0"` or `"not-sent: removed by provider"`. Printing "temperature 0" for a
+provider that cannot accept it is a false claim about a controlled variable.
+
+### The three lanes when something goes wrong — say the same thing the code does
+
+- **`Unavailable`** (no key, timeout, rate limit, provider down, non-conforming reply after
+  one retry) → **`review`**. A human sees the field. The honest stage answer to "what
+  happens when the model is down?" is *"the field reaches a human"*, not *"the field
+  disappears"*.
+- **A model naming a field the pack does not declare** → **`missing`**, with the reason.
+  That is the system refusing to invent, and it is shown as a result, not hidden.
 
 ---
 
