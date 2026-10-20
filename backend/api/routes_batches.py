@@ -58,8 +58,14 @@ def list_batches(service: Service, tenant_id: Tenant) -> list[Batch]:
     return service.list_batches(tenant_id=tenant_id)
 
 
-def _mib(byte_count: int) -> str:
-    return f"{byte_count / (1024 * 1024):.1f} MiB"
+def _readable(byte_count: int) -> str:
+    """A size a person can compare. The unit shrinks with the number, because "0.0 MiB
+    is over the 0.0 MiB limit" is a message that tells a reviewer nothing."""
+    if byte_count >= 1024 * 1024:
+        return f"{byte_count / (1024 * 1024):.1f} MiB"
+    if byte_count >= 1024:
+        return f"{byte_count / 1024:.1f} KiB"
+    return f"{byte_count} B"
 
 
 def _declared_type(name: str) -> str:
@@ -80,7 +86,7 @@ def _refusal(index: int, name: str, size_bytes: int, cap: int) -> BatchFile:
         size=size_bytes,
         status="unsupported",
         error=(
-            f"{_mib(size_bytes)} is over the {_mib(cap)} limit for one upload "
+            f"{_readable(size_bytes)} is over the {_readable(cap)} limit for one upload "
             f"(control {UPLOAD_CAP_CONTROL}), so the file was not read"
         ),
     )

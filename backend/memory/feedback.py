@@ -60,9 +60,19 @@ def apply_patch(
     it came from the pack, the accept is a confirmation of the customer's own rule and
     there is nothing to learn; when it came from a model, the accept is the lesson.
     """
+    # An analyst may redirect the field, not just the value. When they do, the lesson is
+    # the field they chose, which is why `to_field` below reads from the updated mapping
+    # rather than echoing the one we proposed.
+    chosen_field = (
+        payload.target_field.strip()
+        if payload.target_field and payload.target_field.strip()
+        else mapping.target_field
+    )
+
     updated = mapping.model_copy(
         update={
             "status": _STATUS_FOR_ACTION[payload.action],
+            "target_field": chosen_field,
             "value": payload.value if payload.value is not None else mapping.value,
             "unit": payload.unit if payload.unit is not None else mapping.unit,
             "reason": payload.reason or mapping.reason,
@@ -85,7 +95,7 @@ def apply_patch(
         source_label=mapping.source_label,
         action=payload.action,
         from_field=mapping.target_field,
-        to_field=mapping.target_field if teaches else None,
+        to_field=updated.target_field if teaches else None,
         from_value=mapping.value,
         to_value=updated.value,
         reason=payload.reason,

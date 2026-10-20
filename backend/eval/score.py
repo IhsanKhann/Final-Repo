@@ -109,25 +109,118 @@ class GoldenRow(BaseModel):
 #: How a golden row is matched to a produced mapping. Injectable because the correct key
 #: depends on how the adapters name a label on a multi-row table, which is an integration
 #: agreement rather than a property of scoring.
+#:
+#: ⚠ THE KEY HAS THREE PARTS AND EVERY ONE OF THEM WAS A BUG FIRST.
+#:
+#: 1. THE DOCUMENT. The golden set's `ps06_source_file` holds names like
+#:    `first_national_bank_rates_page1.pdf` -- the ORIGINAL rate sheets the sample CSV was
+#:    derived from. Nothing by that name is ever ingested, and nothing by that name is on
+#:    disk. `document_file` names what make_documents.py wrote and the pipeline reads, and
+#:    that is the only name joined on. The produced side had the matching half of the same
+#:    bug: it keyed on `Mapping.document_id`, which is a fresh uuid (`doc-ab12cd34ef56`).
+#:    A filename and a uuid cannot intersect, so `matched` came back 0 for every row and
+#:    accuracy read 0.0 while the pipeline was mapping correctly -- the worst shape of
+#:    defect, because the number looks like catastrophic failure rather than a broken
+#:    join. A `Mapping` does not carry its document's name, so the name has to be supplied:
+#:    see `mapping_key_for`.
+#:
+#: 2. THE LABEL. Necessary and nowhere near sufficient. Measured on the real run,
+#:    (document, label) identified 19, 26 or 30 mappings for the 30 golden rows, because
+#:    every generated document reports all six product types under one set of headings.
+#:
+#: 3. THE VALUE AS PRINTED, canonicalised. This is what makes the key a key. It is also
+#:    the part that cannot be dropped without the SECOND defect returning silently:
+#:    `mapping_accuracy` would still look fine, because all 26 of a column's mappings
+#:    resolve to the same field, while `conversion_correctness` would compare the golden
+#:    row's expected value against whichever of 26 different rates happened to be first.
+#:    A green mapping figure beside a coin-flip conversion figure is worse than two red
+#:    ones, because one of them reads as evidence.
+#:
+#: WHY NOT `Mapping.record_key`, WHICH WOULD IDENTIFY THE RECORD EXACTLY: because a golden
+#: row cannot be joined to one. The adapters mint POSITIONAL keys from the rendered
+#: document -- `p1:line:3`, `Rates!row:2`, `tr:1`, `sentence:1` -- and nothing in the
+#: golden set or in the generator's sidecar records which product sits at which position.
+#: Measured, a golden row's `product_type` could only reach a record key by restating five
+#: separate layout formulas (`p{page}:line:{3 + i}` for the text PDFs, where the 3 is the
+#: renderer's title and header lines; `Rates!row:{2 + i}`; `tr:{1 + i}`;
+#: `sentence:{1 + i}`) in a file that cannot check any of them -- and there is no formula
+#: at all for the scanned PDF, which yields 0 records today. Worse, the failure mode of a
+#: stale formula is a match against the WRONG record, which produces a plausible number.
+#: So the record is identified by the value the golden row says was printed, and where
+#: that is not unique the match is refused rather than guessed. The honest column would be
+#: `expected_record_key`, and it becomes possible only once an adapter records which
+#: record it put at which position -- a change in `adapters/`, not in the CSV.
 MatchKey = Callable[[GoldenRow], tuple[str, ...]]
 MappingKey = Callable[[Mapping], tuple[str, ...]]
 
 
-def default_match_key(row: GoldenRow) -> tuple[str, ...]:
-    """Join on the document the pipeline reads, not the one ps06 was derived from.
+def canonical_value(text: str | None) -> str:
+    """One spelling per quantity, so two sides of a join can be compared at all.
 
-    ⚠ The first version used `row.source_file`, which holds names like
-    `first_national_bank_rates_page1.pdf` -- the ORIGINAL rate sheets the sample CSV was
-    built from. Nothing by that name is ever ingested. Every key missed, `matched` came
-    back 0, and accuracy read 0.0 while the pipeline was mapping correctly. A broken join
-    that reports as catastrophic failure is worse than one that raises, so the column it
-    reads is now named for what it is.
+    `$1,000`, `1000` and `1000.00` are one value; `01 Aug 2026` and `2026-08-01` are one
+    day. Dates are tried BEFORE numbers deliberately: `parse_numeric("01 Aug 2026")`
+    returns 1, so a number-first canonicaliser would file an August date under the same
+    key as a one-month term.
     """
-    return (row.document_file.casefold(), row.source_label.casefold())
+    raw = (text or "").strip()
+    if not raw:
+        return ""
+    as_date = _as_date(raw)
+    if as_date is not None:
+        return as_date.isoformat()
+    number = parse_numeric(raw)
+    if number is not None:
+        return format(number.normalize(), "f")
+    return raw.casefold()
 
 
-def default_mapping_key(mapping: Mapping) -> tuple[str, ...]:
-    return (mapping.document_id.casefold(), mapping.source_label.casefold())
+def default_match_key(row: GoldenRow) -> tuple[str, ...]:
+    """(the document the pipeline reads, the heading, the value as printed)."""
+    return (
+        row.document_file.strip().casefold(),
+        row.source_label.strip().casefold(),
+        canonical_value(row.value_as_printed),
+    )
+
+
+def mapping_key_for(document_names: dict[str, str] | None = None) -> MappingKey:
+    """The produced-side key, given document_id -> filename.
+
+    The name has to come from outside: `Mapping` carries `document_id`, and the contract in
+    types.ts says it carries nothing else about its document. A missing id falls back to
+    the id itself, which simply fails to match -- an unresolvable document must not raise
+    in the middle of a measurement, and must not match something either.
+    """
+    names = dict(document_names or {})
+
+    def key(mapping: Mapping) -> tuple[str, ...]:
+        name = names.get(mapping.document_id, mapping.document_id)
+        return (
+            name.strip().casefold(),
+            mapping.source_label.strip().casefold(),
+            canonical_value(mapping.raw_value),
+        )
+
+    return key
+
+
+#: The key with no document names known, which is what a unit test's fixture supplies when
+#: it sets `document_id` to the filename itself. Production passes `document_names`.
+default_mapping_key = mapping_key_for()
+
+
+def _scored_signature(mapping: Mapping) -> tuple[str, str, str]:
+    """Everything about a mapping that this module scores, and nothing else.
+
+    Two mappings with the same signature are interchangeable AS FAR AS A SCORE GOES, so
+    choosing between them is not a choice. Two with different signatures are not, and
+    picking one would be this module inventing which record a golden row meant.
+    """
+    return (
+        mapping.target_field,
+        canonical_value(mapping.value),
+        (mapping.unit or "").strip().casefold(),
+    )
 
 
 class Unscoreable(BaseModel):
@@ -153,6 +246,10 @@ class FieldOutcome(BaseModel):
     produced_value: str | None
     value_correct: bool | None = None
     conversion_was_expected: bool = False
+    #: How many produced mappings the key matched. 1 is the healthy case. More than 1 is
+    #: scoreable only because they all say the same thing; it is recorded so a reader can
+    #: see how precise the join actually was rather than taking the total on trust.
+    candidates: int = 0
     note: str | None = None
 
 
@@ -170,6 +267,12 @@ class Score(BaseModel):
     conversion_rows: int
     matched: int
     unmatched: int
+    #: Rows the key matched several mappings for that did NOT agree about where the value
+    #: belongs. Refused rather than scored, and counted in `unmatched` -- so they count as
+    #: wrong, like any other row the run cannot account for. Reported separately because
+    #: "we cannot tell which record you meant" and "we produced nothing" need different
+    #: fixes: the first is a key or an adapter, the second is coverage.
+    ambiguous: int = 0
     outcomes: list[FieldOutcome]
 
     @property
@@ -201,24 +304,28 @@ def _as_date(text: str) -> date | None:
 
 
 def _values_agree(produced: str | None, expected: str) -> bool:
-    """Compare as numbers if both are numbers, as dates if both are dates, else as text.
+    """Compare as dates if both are dates, as numbers if both are numbers, else as text.
 
     Never as raw strings first: the fixtures deliberately print the same quantity in each
     institution's own house style, which is the problem the product solves. Scoring that
     as a mismatch would mark the pipeline wrong for being right.
+
+    Dates come first because `parse_numeric` is not date-aware: it reads "01 Aug 2026" as
+    1 and "01 Sep 2026" as 1, so a number-first comparison called two different days
+    equal. That is a false CORRECT, which is the one direction a scorer must never err in.
     """
     if produced is None:
         return False
-
-    left = parse_numeric(produced)
-    right = parse_numeric(expected)
-    if left is not None and right is not None:
-        return abs(left - right) <= VALUE_TOLERANCE
 
     left_date = _as_date(produced)
     right_date = _as_date(expected)
     if left_date is not None and right_date is not None:
         return left_date == right_date
+
+    left = parse_numeric(produced)
+    right = parse_numeric(expected)
+    if left is not None and right is not None:
+        return abs(left - right) <= VALUE_TOLERANCE
 
     return produced.strip().casefold() == expected.strip().casefold()
 
@@ -228,10 +335,26 @@ def score(
     rows: Sequence[GoldenRow] | None = None,
     *,
     minimum_confirmed: int = MINIMUM_CONFIRMED_ROWS,
+    document_names: dict[str, str] | None = None,
     match_key: MatchKey = default_match_key,
-    mapping_key: MappingKey = default_mapping_key,
+    mapping_key: MappingKey | None = None,
 ) -> Score | Unscoreable:
-    """Measure a run, or refuse and say exactly how short of confirmed labels we are."""
+    """Measure a run, or refuse: for want of confirmed labels, or for want of a record.
+
+    `document_names` maps `Mapping.document_id` to the filename the pipeline ingested,
+    because that is the half of the key a `Mapping` does not carry. Omit it only where the
+    fixture puts the filename in `document_id` itself.
+
+    `mapping_key` overrides the produced-side key entirely; passing both it and
+    `document_names` is a contradiction rather than a preference, so it raises here
+    instead of quietly ignoring one of them.
+    """
+    if mapping_key is not None and document_names is not None:
+        raise ValueError(
+            "pass document_names or mapping_key, not both: a custom mapping_key decides "
+            "for itself how a document is named, so the names would be ignored"
+        )
+    mapping_key = mapping_key or mapping_key_for(document_names)
     rows = list(rows) if rows is not None else load_golden_set()
     confirmed = confirmed_rows(rows)
 
@@ -248,19 +371,32 @@ def score(
             ),
         )
 
-    produced: dict[tuple[str, ...], Mapping] = {}
+    # Every mapping a key matches, not the first one. The previous `setdefault` kept one
+    # of 26 and discarded the rest, which is how a conversion figure became a coin flip.
+    produced: dict[tuple[str, ...], list[Mapping]] = {}
     for mapping in mappings:
-        produced.setdefault(mapping_key(mapping), mapping)
+        produced.setdefault(mapping_key(mapping), []).append(mapping)
 
     outcomes: list[FieldOutcome] = []
     field_correct = 0
     conversion_rows = 0
     conversion_correct = 0
     matched = 0
+    ambiguous = 0
 
     for row in confirmed:
-        mapping = produced.get(match_key(row))
-        if mapping is None:
+        candidates = produced.get(match_key(row), [])
+        interchangeable = {_scored_signature(candidate) for candidate in candidates}
+
+        if not candidates or len(interchangeable) > 1:
+            note = "the pipeline produced no mapping for this row, which counts as wrong"
+            if candidates:
+                ambiguous += 1
+                note = (
+                    f"{len(candidates)} mappings share this row's key and disagree about "
+                    "where the value belongs, so nothing here says which record the row "
+                    "meant; refused and counted wrong rather than guessed"
+                )
             outcomes.append(
                 FieldOutcome(
                     gold_id=row.gold_id,
@@ -270,13 +406,17 @@ def score(
                     expected_value=row.expected_value,
                     produced_value=None,
                     conversion_was_expected=row.needs_conversion,
-                    note="the pipeline produced no mapping for this row, which counts as wrong",
+                    candidates=len(candidates),
+                    note=note,
                 )
             )
             if row.needs_conversion:
                 conversion_rows += 1
             continue
 
+        # Several candidates are fine ONLY here, where they are indistinguishable in
+        # every respect this module scores, so there is no choice left to get wrong.
+        mapping = candidates[0]
         matched += 1
         correct_field = mapping.target_field == row.expected_field
         field_correct += int(correct_field)
@@ -302,6 +442,7 @@ def score(
                 produced_value=mapping.value,
                 value_correct=value_correct,
                 conversion_was_expected=row.needs_conversion,
+                candidates=len(candidates),
             )
         )
 
@@ -314,5 +455,6 @@ def score(
         conversion_rows=conversion_rows,
         matched=matched,
         unmatched=len(confirmed) - matched,
+        ambiguous=ambiguous,
         outcomes=outcomes,
     )

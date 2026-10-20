@@ -347,6 +347,12 @@ class PaginatedResponse(BaseModel, Generic[T]):
 
 class MappingPatchPayload(Boundary):
     action: Literal["accept", "reject", "edit"]
+    #: The field the analyst says this value belongs in. Mirrors types.ts (AGREEMENTS
+    #: §6b) and without it the review lane is unresolvable: when the model is
+    #: unavailable the row arrives with target_field empty, so accept/reject can only
+    #: rate a guess that was never made. The most valuable correction of all -- "it is
+    #: THIS field" -- had no way through the API.
+    target_field: str | None = None
     value: str | None = None
     unit: str | None = None
     reason: str | None = None

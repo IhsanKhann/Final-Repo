@@ -94,8 +94,8 @@ def test_the_reason_names_both_numbers_and_the_setting_that_holds_the_second(
     set_cap(client, 64)
     batch = upload(client, ("huge.csv", b"x" * 1048576))
     error = file_named(batch, "huge.csv")["error"]
-    assert "1.0 MiB" in error
-    assert "0.0 MiB" in error  # the cap, in the same unit, so the two are comparable
+    assert "1.0 MiB" in error  # what arrived
+    assert "64 B" in error  # the cap -- the unit shrinks so the two stay comparable
     assert CAP in error
 
 
