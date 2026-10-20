@@ -58,13 +58,35 @@ def _mapping(row: GoldenRow, *, field: str | None = None, value: str | None = No
     )
 
 
-def test_the_shipped_golden_set_is_not_scoreable_yet():
-    """Guards the live state: every expected_field is PROPOSED until a human confirms it."""
+def test_the_shipped_golden_set_is_confirmed_by_named_humans():
+    """Reframed, not deleted. This asserted the set was NOT scoreable, and that was true
+    when it was written: every expected_field was PROPOSED and no accuracy figure could
+    exist. Its own docstring said that if it ever failed, either humans had really
+    confirmed the rows or an agent had written its own initials. The first happened --
+    30/30, by two named people.
+
+    So the property worth guarding has moved. The refusal itself is tested above and below
+    with synthetic rows, which is where it belongs; what this now guards is that the
+    shipped set's confirmation is REAL -- 30 rows, every one carrying initials, and
+    scoreable as a consequence rather than by assertion.
+    """
     rows = load_golden_set()
     assert len(rows) == 30, "the golden set should hold 30 rows"
+
+    confirmed = confirmed_rows(rows)
+    assert len(confirmed) == 30, (
+        f"{len(confirmed)} of 30 rows carry initials; an accuracy number published from "
+        "this set would be partly self-graded"
+    )
+    for row in rows:
+        assert row.confirmed_by.strip(), f"{row.gold_id} has no confirming initials"
+
+    # Scoreable follows from the above rather than being asserted on its own: an empty
+    # produced set still scores, it just scores zero with every row unmatched.
     result = score([], rows)
-    assert isinstance(result, Unscoreable)
-    assert result.confirmed == len(confirmed_rows(rows))
+    assert isinstance(result, Score)
+    assert result.confirmed == 30
+    assert result.unmatched == 30, "no mappings were supplied, so nothing can have matched"
 
 
 def test_an_unconfirmed_golden_set_produces_no_number_at_all():

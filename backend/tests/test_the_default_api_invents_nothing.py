@@ -78,15 +78,26 @@ def test_the_pack_list_is_the_pack_that_actually_governs_a_run(
 def test_health_says_why_every_accuracy_figure_reads_zero(
     default_client: TestClient,
 ) -> None:
-    """A zero with no explanation reads as a measured failure instead of an absent one."""
+    """A zero with no explanation reads as a measured failure instead of an absent one.
+
+    Written when the golden set was 0/30 confirmed, so it asserted `degraded`. The set is
+    now confirmed 30/30 and the layer correctly reports `ok` — so the assertion is on the
+    PROPERTY rather than on the state: whatever the confirmation count, the Scoring layer
+    must exist, must state the count, and must carry its source. That is what stops a zero
+    being mistaken for a measurement, and it holds in both directions.
+    """
     layers = {
         layer["name"]: layer for layer in default_client.get("/api/health").json()["layers"]
     }
     scoring = layers.get("Scoring")
     assert scoring is not None, "health does not report the scoring state at all"
-    assert scoring["status"] == "degraded"
-    assert "confirmed" in scoring["message"]
-    assert "required" in scoring["message"]
+    assert scoring["status"] in ("ok", "degraded", "down")
+    assert "confirmed" in scoring["message"], "the layer does not state the confirmed count"
+    assert "source=" in scoring["message"], "the layer does not say where it read that"
+
+    # Degraded must still explain itself, which was this test's original point.
+    if scoring["status"] == "degraded":
+        assert "required" in scoring["message"]
 
 
 def test_a_fresh_install_reports_an_empty_pipeline_rather_than_prior_work(

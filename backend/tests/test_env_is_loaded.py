@@ -241,7 +241,7 @@ def test_the_app_starts_and_serves_with_no_credential_at_all(tmp_path, monkeypat
 
     from backend.api import deps
     from backend.api.main import create_app
-    from backend.engine.config import SECRETS
+    from backend.engine.config import SECRETS, SqliteStore, set_control
 
     monkeypatch.setenv("API_DB_PATH", str(tmp_path / "api.db"))
     monkeypatch.setenv("CONFIG_DB_PATH", str(tmp_path / "config.db"))
@@ -249,6 +249,14 @@ def test_the_app_starts_and_serves_with_no_credential_at_all(tmp_path, monkeypat
     app = create_app()
     for env_var in SECRETS.values():
         monkeypatch.delenv(env_var, raising=False)
+
+    # The missing credential is the only thing this test is allowed to be missing. Once a
+    # second pack existed, a fresh store also had no `active_pack_id`, and the two-pack
+    # block reported the Pack layer `down` -- so the assertion below started failing for a
+    # reason that has nothing to do with keys. Naming the pack removes the confound
+    # instead of relaxing the assertion; `test_two_packs_and_no_choice_blocks_a_run`
+    # covers the block itself.
+    set_control("active_pack_id", "banking_rates", store=SqliteStore(tmp_path / "config.db"))
 
     with TestClient(app) as client:
         body = client.get("/api/health").json()
