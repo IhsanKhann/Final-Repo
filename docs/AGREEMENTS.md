@@ -176,9 +176,23 @@ institution, each institution using its own vocabulary for the same quantities.
 ## 8. Commands a human has to run
 
 ```bash
-# Ihsan — grant Ali access to the project (blocked for the agent, needs a human)
+# Ihsan — grant Ali access to the project.
+#
+# ⚠ roles/owner CANNOT be granted by CLI here. On a project with no organization,
+# Google requires owners to be INVITED through the Console and returns
+# SOLO_MUST_INVITE_OWNERS to gcloud. Measured 2026-10-20.
+#
+# Use these two instead. They work from the CLI, they are enough for everything in
+# Ali's Terraform, and they are least-privilege — which §6 asks for anyway.
+# editor alone is NOT enough: Terraform creates google_project_iam_member bindings,
+# and editor cannot modify IAM policy.
 gcloud projects add-iam-policy-binding ps12-canon-hackathon26 \
-  --member="user:muhammadalisajjadakhunzada@gmail.com" --role="roles/owner"
+  --member="user:muhammadalisajjadakhunzada@gmail.com" --role="roles/editor"
+gcloud projects add-iam-policy-binding ps12-canon-hackathon26 \
+  --member="user:muhammadalisajjadakhunzada@gmail.com" --role="roles/resourcemanager.projectIamAdmin"
+
+# If Ali genuinely needs owner (he should not for this build):
+#   console.cloud.google.com → IAM & Admin → IAM → Grant access → invite, he accepts by email.
 
 # Either — link billing once an account is open
 gcloud billing projects link ps12-canon-hackathon26 --billing-account=<OPEN_ACCOUNT_ID>
