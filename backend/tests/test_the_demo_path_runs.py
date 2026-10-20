@@ -203,6 +203,49 @@ def test_a_correction_through_the_api_is_learned(client: TestClient) -> None:
     assert "no model call" in (body["learned_message"] or "")
 
 
+def test_the_gold_table_has_one_row_per_record_not_per_document(client: TestClient) -> None:
+    """The deliverable. These documents hold many records and we reported one each."""
+    batch = _upload(client, *DEMO_FILES)
+    records = client.get(f"/api/batches/{batch['id']}/records?per_page=500").json()
+    documents = [f for f in batch["files"] if f["status"] == "done"]
+    assert records["total"] > len(documents), (
+        f"{records['total']} record(s) from {len(documents)} document(s): the gold table "
+        "is still collapsing each file into a single row"
+    )
+    # Every row must be distinguishable, or the UI cannot address one.
+    ids = [row["id"] for row in records["data"]]
+    assert len(ids) == len(set(ids)), "two records share an id"
+
+
+def test_a_completed_batch_leaves_evidence_for_every_accepted_field(
+    client: TestClient, tmp_path
+) -> None:
+    """The ledger must not quietly lose its caller again.
+
+    This codebase's signature failure is a correct, tested mechanism with nothing calling
+    it: the ledger existed and passed its own tests for hours while no run wrote a single
+    row. A count assertion is what makes that impossible to repeat.
+    """
+    from backend.engine.ledger import SqliteLedger
+
+    batch = _upload(client, *DEMO_FILES)
+    accepted = batch["stats"]["auto_approved"]
+    assert accepted > 0, "nothing was auto-accepted, so this proves nothing"
+
+    ledger = SqliteLedger(tmp_path / "ledger.db")
+    entries = sum(
+        len(ledger.latest_for_document(f["document_id"]))
+        for f in batch["files"]
+        if f.get("document_id")
+    )
+    assert entries >= accepted, (
+        f"{accepted} field(s) were auto-accepted but the ledger holds {entries} entries: "
+        "the audit trail cannot defend values it never recorded"
+    )
+    ok, broken = ledger.verify_chain()
+    assert ok, f"the evidence chain is broken at {broken}"
+
+
 def test_the_export_is_byte_identical_across_two_requests(client: TestClient) -> None:
     """Law IV through the endpoint, not just through the renderer."""
     batch = _upload(client, DEMO_FILES[1])

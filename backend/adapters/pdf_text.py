@@ -192,7 +192,8 @@ def extract_document(
         skipped = 0
 
         def emit(label: str, value: str, box: tuple[float, float, float, float],
-                 page_number: int, width: float, height: float, context: str) -> None:
+                 page_number: int, width: float, height: float, context: str,
+                 record_key: str) -> None:
             nonlocal skipped
             try:
                 bbox = normalized_bbox(box[0], box[1], box[2], box[3], width, height)
@@ -205,6 +206,7 @@ def extract_document(
                     source_label=label,
                     raw_value=value,
                     source_location=SourceLocationPdf(page=page_number, bbox=bbox),
+                    record_key=record_key,
                     context=context,
                 )
             )
@@ -213,7 +215,10 @@ def extract_document(
             lines = _lines(words)
             table_width = _table_width(lines)
             headings: list[str] | None = None
-            for cells in lines:
+            # The line index is the record identity for a PDF table: one record per row of
+            # the table, scoped to the page, so a page 2 row 3 is not a page 1 row 3.
+            for line_index, cells in enumerate(lines):
+                record_key = f"p{number}:line:{line_index}"
                 is_table_row = table_width is not None and len(cells) == table_width
                 if is_table_row and headings is None:
                     headings = [cell[0] for cell in cells]
@@ -224,13 +229,13 @@ def extract_document(
                         emit(
                             headings[index], cell[0],
                             (cell[1], cell[2], cell[3], cell[4]),
-                            number, width, height, context,
+                            number, width, height, context, record_key,
                         )
                     continue
                 text = " ".join(cell[0] for cell in cells)
                 emit(
                     UNLABELLED, text, _line_bbox(cells), number, width, height,
-                    snippet(text),
+                    snippet(text), record_key,
                 )
 
         return AdapterResult(

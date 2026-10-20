@@ -175,6 +175,11 @@ def extract_document(
                         source_label=cell.source_label,
                         raw_value=cell.raw_value,
                         source_location=location,
+                        # Banded by the box's vertical position, because a vision reading
+                        # has no row numbers to report: cells printed on the same line of
+                        # the page share a y and so belong to the same record. Rounded so
+                        # the banding is deterministic rather than float-noise sensitive.
+                        record_key=f"p{page.page}:y:{round(cell.bbox[1], 3)}",
                         extractor_confidence=cell.confidence,
                         context=cell.context,
                     )

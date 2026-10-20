@@ -147,7 +147,7 @@ def extract_document(
         facts: list[ExtractedFact] = []
         skipped = 0
         headings: list[str] = []
-        for row in reader.rows:
+        for row_index, row in enumerate(reader.rows):
             if not headings:
                 # The first row of a table names its columns. A page whose first row is
                 # data loses that row rather than having labels invented for it.
@@ -166,6 +166,8 @@ def extract_document(
                         source_label=headings[index],
                         raw_value=span.text,
                         source_location=SourceLocationText(start=span.start, end=span.end),
+                        # One record per table row, by position in the document.
+                        record_key=f"tr:{row_index}",
                         context=context,
                     )
                 )
@@ -176,6 +178,10 @@ def extract_document(
                     source_label=UNLABELLED,
                     raw_value=span.text,
                     source_location=SourceLocationText(start=span.start, end=span.end),
+                    # Prose outside a table is its own record, keyed by where it starts --
+                    # there is no row to belong to, and lumping it with the table would
+                    # attach a sentence to a product it may say nothing about.
+                    record_key=f"prose:{span.start}",
                     context=snippet(span.text),
                 )
             )

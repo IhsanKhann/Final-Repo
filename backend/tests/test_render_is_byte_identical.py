@@ -76,9 +76,20 @@ def test_input_order_does_not_change_the_output():
 
 def test_columns_follow_the_declared_order_not_the_data():
     header = render_csv(_mappings(), FIELD_ORDER).decode().splitlines()[0]
-    assert header == "document_id,f_alpha,f_beta,f_gamma"
+    assert header == "document_id,record,f_alpha,f_beta,f_gamma"
     # A field the pack declares but no document filled must still have its column.
     assert ",f_gamma" in header
+
+
+def test_one_row_per_record_not_per_document():
+    """A document is not a record. Without the keys these three mappings collapse to two
+    rows (one per document); with them, doc-a's two records stay two rows."""
+    keys = {"m1": "row:2", "m3": "row:3", "m2": "row:9"}
+    without = render_csv(_mappings(), FIELD_ORDER).decode().splitlines()
+    with_keys = render_csv(_mappings(), FIELD_ORDER, record_keys=keys).decode().splitlines()
+    assert len(without) - 1 == 2, "two documents, so document-level grouping gives 2 rows"
+    assert len(with_keys) - 1 == 3, "three records, so record-level grouping gives 3 rows"
+    assert "row:2" in with_keys[1]
 
 
 def test_the_line_ending_is_lf_on_every_platform():

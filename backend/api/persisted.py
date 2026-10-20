@@ -279,7 +279,11 @@ class PersistedService:
                         document_name=upload.name,
                     )
                     for resolution in outcome.resolutions:
-                        self._repo.upsert_mapping(resolution.mapping, tenant_id=tenant_id)
+                        self._repo.upsert_mapping(
+                            resolution.mapping,
+                            tenant_id=tenant_id,
+                            record_key=resolution.record_key,
+                        )
                         self._record_evidence(
                             resolution, batch_id=batch_id, pack=pack, tenant_id=tenant_id
                         )
@@ -408,6 +412,7 @@ class PersistedService:
                     run_id=batch_id,
                     document_id=mapping.document_id,
                     mapping_id=mapping.id,
+                    record_key=resolution.record_key,
                     source_label=mapping.source_label,
                     target_field=mapping.target_field,
                     raw_value=mapping.raw_value,
@@ -501,6 +506,7 @@ class PersistedService:
             return None
 
         mappings = self._repo.list_mappings(tenant_id=tenant_id, batch_id=batch_id)
+        keys = self._repo.record_keys(tenant_id=tenant_id, batch_id=batch_id)
         documents = {
             document.id: document
             for document in self._repo.list_documents(batch_id, tenant_id=tenant_id)
@@ -508,12 +514,17 @@ class PersistedService:
         order = self._field_order()
 
         rows: list[DatasetRecord] = []
-        by_document: dict[str, list[Mapping]] = {}
+        # Grouped by (document, record), not by document. A rate sheet holds one record
+        # per product row; grouping by document alone showed one row of thirty and let
+        # the last value written win.
+        grouped: dict[tuple[str, str], list[Mapping]] = {}
         for mapping in mappings:
-            by_document.setdefault(mapping.document_id, []).append(mapping)
+            grouped.setdefault((mapping.document_id, keys.get(mapping.id, "")), []).append(
+                mapping
+            )
 
-        for document_id in sorted(by_document):
-            group = by_document[document_id]
+        for document_id, record_key in sorted(grouped):
+            group = grouped[(document_id, record_key)]
             values: dict[str, Any] = {}
             worst: str = "auto"
             page_number: int | None = None
@@ -536,7 +547,10 @@ class PersistedService:
             document = documents.get(document_id)
             rows.append(
                 DatasetRecord(
-                    id=document_id,
+                    # The record is the row's identity now, not the document. Stable
+                    # across re-runs, so the UI can keep a selection and the ledger can be
+                    # joined back to the row a reviewer is looking at.
+                    id=f"{document_id}:{record_key}" if record_key else document_id,
                     document_id=document_id,
                     document_name=document.name if document else document_id,
                     _status=worst,
@@ -565,17 +579,22 @@ class PersistedService:
         if self._repo.get_batch(batch_id, tenant_id=tenant_id) is None:
             return None
         mappings = self._repo.list_mappings(tenant_id=tenant_id, batch_id=batch_id)
+        keys = self._repo.record_keys(tenant_id=tenant_id, batch_id=batch_id)
         order = self._field_order()
         if fmt == "json":
             return ExportFile(
                 filename=f"{batch_id}.json",
                 media_type="application/json",
-                content=render_module.render_json(mappings, order, audit=audit),
+                content=render_module.render_json(
+                    mappings, order, audit=audit, record_keys=keys
+                ),
             )
         return ExportFile(
             filename=f"{batch_id}.csv",
             media_type="text/csv",
-            content=render_module.render_csv(mappings, order, audit=audit),
+            content=render_module.render_csv(
+                mappings, order, audit=audit, record_keys=keys
+            ),
         )
 
     # -- documents -------------------------------------------------------------

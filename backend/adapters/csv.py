@@ -95,6 +95,9 @@ def extract_document(
                             # +2: row 1 is the heading row, and spreadsheets count from 1.
                             cell=cell_ref(column_index, row_offset + 2),
                         ),
+                        # One record per data row. A file holds many records and the row
+                        # number is the document's own identity for them.
+                        record_key=f"row:{row_offset + 2}",
                         context=context,
                     )
                 )
