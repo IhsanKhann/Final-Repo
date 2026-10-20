@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   UploadCloud, FileText, FileSpreadsheet, Globe, CheckCircle2,
   AlertTriangle, ArrowRight, X, RefreshCw, Layers, ShieldCheck,
-  Cpu, Zap, Play, Terminal, HelpCircle, AlertCircle, Ban
+  Cpu, Zap, Play, Terminal, HelpCircle, AlertCircle, Ban, Info, Check
 } from 'lucide-react';
 import { getPacks, createBatch, connectBatchEvents, cancelBatch } from '../api/client';
 import type { AgentEvent } from '../api/types';
