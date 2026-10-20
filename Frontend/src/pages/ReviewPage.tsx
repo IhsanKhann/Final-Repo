@@ -8,7 +8,7 @@ import {
   HelpCircle, Eye, Download, ShieldCheck, FileSpreadsheet,
   AlertCircle
 } from 'lucide-react';
-import { getDocumentMappings, patchMapping, bulkAcceptMappings } from '../api/client';
+import { getDocumentMappings, patchMapping, bulkAcceptMappings, getReviewQueue } from '../api/client';
 import type { Mapping, MappingStatus } from '../api/types';
 import { ConfidenceBar, StatusBadge, Skeleton } from '../components/ui/SharedUi';
 import { useToast, useUndo } from '../context/AppContext';
@@ -19,13 +19,17 @@ export function ReviewPage() {
   const { addToast } = useToast();
   const { pushUndo, undoEntry } = useUndo();
 
-  const [activeDocId, setActiveDocId] = useState('doc-001');
+  // Empty until the server says which documents exist. 'doc-001' was a mock id, so the
+  // page opened by requesting mappings for a document no server has.
+  const [activeDocId, setActiveDocId] = useState('');
   const [activeDocIndex, setActiveDocIndex] = useState(0);
-  const [selectedMappingId, setSelectedMappingId] = useState<string | null>('m2');
+  // 'm2' was a mock mapping id; the effect below selects the first real one that needs
+  // a human instead.
+  const [selectedMappingId, setSelectedMappingId] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [zoomLevel, setZoomLevel] = useState(100);
-  const [docPage, setDocPage] = useState(3);
+  const [docPage, setDocPage] = useState(1);
   const [lastSavedTime, setLastSavedTime] = useState<string>('Saved just now');
 
   // Form states inside the Record Detail Drawer
@@ -34,17 +38,58 @@ export function ReviewPage() {
   const [drawerReason, setDrawerReason] = useState('');
   const [showExportWarning, setShowExportWarning] = useState(false);
 
-  const documentsList = useMemo(() => [
-    { id: 'doc-001', name: 'rates_q3.xlsx', type: 'sheet' as const, sheet: 'Q3_Rates' },
-    { id: 'doc-002', name: 'filing.pdf', type: 'pdf' as const, pages: 4 },
-    { id: 'doc-003', name: 'notes.html', type: 'text' as const },
-  ], []);
+  // ⚠ This was three invented documents — rates_q3.xlsx, filing.pdf and notes.html — and
+  // the page opened on the first of them. None exists on any server, so every visit asked
+  // for the mappings of a document that was never uploaded and the reviewer saw a file
+  // list belonging to nothing.
+  //
+  // The real list is derived from the review queue, which is the right source: this screen
+  // exists to work through what needs a human, so the documents it offers should be the
+  // documents that have something waiting.
+  const { data: queue } = useQuery({
+    queryKey: ['review-queue'],
+    queryFn: getReviewQueue,
+    refetchInterval: 15000,
+  });
+
+  const documentsList = useMemo(() => {
+    type Doc = {
+      id: string; name: string; type: 'sheet' | 'pdf' | 'text';
+      pending: number;
+      // Filled from the first mapping's own source_location, so the viewer shows the page
+      // or sheet the evidence actually points at rather than a number we invented.
+      pages?: number; sheet?: string;
+    };
+    const seen = new Map<string, Doc>();
+    for (const item of queue ?? []) {
+      const existing = seen.get(item.document_id);
+      if (existing) { existing.pending += 1; continue; }
+      const name = item.document_name || item.document_id;
+      const lower = name.toLowerCase();
+      const type: 'sheet' | 'pdf' | 'text' =
+        lower.endsWith('.pdf') ? 'pdf'
+        : (lower.endsWith('.xlsx') || lower.endsWith('.xls') || lower.endsWith('.csv')) ? 'sheet'
+        : 'text';
+      seen.set(item.document_id, { id: item.document_id, name, type, pending: 1 });
+    }
+    return [...seen.values()];
+  }, [queue]);
 
   const currentDoc = documentsList[activeDocIndex] || documentsList[0];
+
+  // Adopt the first real document once the queue arrives, unless the reviewer has already
+  // picked one. Without this the page holds an empty activeDocId forever.
+  useEffect(() => {
+    if (!activeDocId && documentsList.length > 0) {
+      setActiveDocId(documentsList[0].id);
+      setActiveDocIndex(0);
+    }
+  }, [activeDocId, documentsList]);
 
   const { data: mappings, isLoading, refetch } = useQuery({
     queryKey: ['mappings', activeDocId],
     queryFn: () => getDocumentMappings(activeDocId),
+    enabled: Boolean(activeDocId),
   });
 
   const activeMapping = useMemo(() => {
@@ -296,7 +341,15 @@ export function ReviewPage() {
           <div style={{ width: 1, height: 18, background: 'var(--color-border)' }} />
 
           {/* Document switcher pills */}
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            {documentsList.length === 0 && (
+              /* Nothing queued is a legitimate state and it needs to say which one it is:
+                 an empty queue after a clean run is success, not an error, and a reviewer
+                 who sees a blank screen cannot tell those apart. */
+              <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                Nothing is waiting for review — upload documents to populate this queue.
+              </span>
+            )}
             {documentsList.map((doc, idx) => (
               <button
                 key={doc.id}
@@ -385,11 +438,11 @@ export function ReviewPage() {
                   >
                     <ChevronLeft size={13} />
                   </button>
-                  <span>Page {docPage} of {currentDoc.pages ?? 4}</span>
+                  <span>Page {docPage} of {(currentDoc?.pages ?? 1)}</span>
                   <button
                     className="btn btn-icon btn-ghost btn-sm"
-                    onClick={() => setDocPage(p => Math.min(currentDoc.pages ?? 4, p + 1))}
-                    disabled={docPage >= (currentDoc.pages ?? 4)}
+                    onClick={() => setDocPage(p => Math.min((currentDoc?.pages ?? 1), p + 1))}
+                    disabled={docPage >= ((currentDoc?.pages ?? 1))}
                   >
                     <ChevronRight size={13} />
                   </button>
@@ -426,7 +479,7 @@ export function ReviewPage() {
                   }}
                 >
                   <div style={{ background: '#f1f5f9', padding: '6px 12px', borderBottom: '1px solid #cbd5e1', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontWeight: 600, color: '#475569' }}>Sheet: {currentDoc.sheet}</span>
+                    <span style={{ fontWeight: 600, color: '#475569' }}>Sheet: {(currentDoc?.sheet ?? '')}</span>
                     <span style={{ fontSize: '0.7rem', color: '#64748b' }}>Active Cell: {activeMapping?.target_field === 'production_t' ? 'B12' : activeMapping?.target_field === 'unit_cost' ? 'B13' : 'A4'}</span>
                   </div>
 
