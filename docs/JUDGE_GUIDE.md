@@ -104,11 +104,16 @@ precedent resolves deterministically, the rest goes to the review tray, and Heal
 4. **Click any cell.** Page and bounding box, or sheet cell, or character offsets. The rule
    that fired. The pack version. The confidence.
    Show the conversion: Pacific Savings publishes a **monthly** rate; `0.1157 × 12 = 1.3884`,
-   and the factor is declared in the customer's pack, not inferred by us.
+   and the factor is declared in the customer's pack, not inferred by us. Say "the one
+   monthly-quoted rate in our golden set converts correctly" — the denominator is 1.
 5. **Review tray.** Fix one flagged field. The toast reads *"Learned: … The next run
    resolves it with no model call."*
 6. **Re-run.** Auto-accept rose from 278 to 337 and the review queue fell from 139 to 82,
-   because the precedent applied. **That is the feedback loop, measured, not asserted.**
+   because the precedent applied. The loop is **wired and measured at the field level** — a
+   correction becomes a precedent and the next run resolves that field at ANALYST authority
+   with zero model calls. ⚠ **Do not say "it improves every round":** no round-over-round
+   comparison has been run, and `RoundReport.comparable` refuses to compute one across
+   changed inputs.
 7. **Insights.** The correction, and 418.5 analyst minutes saved.
 
 ---
@@ -152,7 +157,7 @@ formats, footnotes."*
 |---|---|---|
 | **Multi-format ingestion** — PDFs (text and scanned), HTML, spreadsheets, narrative | **4½ / 5** | CSV, XLSX, HTML, text PDF and narrative all ingest with provenance. Narrative yields 155 figures across 31 records from prose with no headings. **Scanned PDFs rasterize and are honestly refused** — see §8. |
 | **Intelligent field mapping** | **done** | `Nominal (monthly)`, `p.a. %` and `Rate` all resolve to `interest_rate_annual_pct`. A live GPT-4o call mapped the undeclared `Opening Balance` → `minimum_deposit_usd`. The model may only choose from fields the pack declares. |
-| **Unit conversion + configurable business rules** | **done** | `0.1157 × 12 = 1.3884`, factor declared in the pack with `formula_text` for the UI. Zero model involvement. **conversion_correctness = 1.0 measured.** Edit the YAML, re-run, the column changes. |
+| **Unit conversion + configurable business rules** | **done** | `0.1157 × 12 = 1.3884`, factor declared in the pack with `formula_text` for the UI, zero model involvement, cell and rule id attached. ⚠ **`conversion_correctness = 1.0` is computed over `conversion_rows = 1`** — exactly one confirmed golden row expects a conversion (G016, Pacific Savings). It is one correct answer out of one, not a rate. The defensible claim is: *the one monthly-quoted rate in the golden set converts correctly, and the converter is table-driven, so editing the factor in the YAML changes the column.* |
 | **Ambiguity handling** | **done** | Three lanes: 278 auto / 141 review / 45 missing. A value without provenance cannot be constructed — the schema refuses. A model that names an undeclared field lands in `missing` with the reason. An unavailable model routes to `review`, never to a guess. |
 | **Feedback-driven learning** | **done** | A correction writes a precedent; the next run resolves it with **no model call**. Measured across two runs: auto 278 → 337, review 139 → 82. |
 
@@ -161,7 +166,7 @@ formats, footnotes."*
 | Criterion | Our number |
 |---|---|
 | Field mapping accuracy | **17 of 30 confirmed golden rows matched**; see §8 for the 13 |
-| Unit conversion correctness | **1.0** |
+| Unit conversion correctness | **1 of 1** — see the warning above; this is one row, not a rate |
 | Reduction in manual standardization effort | **418.5 analyst minutes** on one batch, counted by the pipeline |
 | Improvement from feedback | **auto 278 → 337, review 139 → 82** after one correction |
 
@@ -203,9 +208,26 @@ Stated plainly, because each of these is something a careful judge will probe.
 5. **Terraform was written but never applied.** `infra/` is correct infrastructure-as-code;
    the live resources were provisioned with `gcloud` and Cloud Build.
 6. **Mapping accuracy is 17 of 30, not 46.7%.** The raw figure divides by rows that cannot
-   match: 5 scanned-PDF rows (no vision call), 5 narrative rows whose golden "labels" are
-   prose fragments and cannot join on a heading, and 3 header-text drifts between the two
-   generators. We report the matched count and the breakdown rather than the ratio.
+   match. The 13:
+   - **5 scanned-PDF rows** — no vision call has ever succeeded.
+   - **5 narrative rows** — their golden "labels" are prose fragments (*"pays ... annually"*)
+     and cannot join on a heading. Our golden set design, not the pipeline.
+   - **3 pack-vocabulary gaps** (G010, G017, G020). Not drift: the documents DO emit
+     `From`, `Yield (annual)` and `valid from` — 30, 30 and 19 facts. The **pack declares
+     none of them**, so deterministic retrieval found no candidate, the label was classed
+     not-reportable, and the mapper never got the chance it exists for. That is a real
+     weakness and we state it rather than patch three synonyms into an ACCEPTED pack minutes
+     before presenting — which would be exactly the Law III violation this product forbids.
+   - **1 matched-but-wrong** (G019): `Months` printed `0`, expected `term_months`, produced
+     `interest_rate_annual_pct`. The only genuine mapping error in the set.
+
+7. **"It learns and improves each round."** The mechanism is proven at the field level; no
+   round-over-round figure exists. Say *"the loop is wired and measured per field; the round
+   comparison is the next thing we would run."*
+
+8. **No >15-page async route.** `async_page_threshold` has no reader, and it was never
+   implementable as written: four of six documents report `page_count=None`, since only the
+   two PDF adapters set it.
 
 ---
 
