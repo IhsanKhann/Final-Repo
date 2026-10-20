@@ -62,11 +62,17 @@ export function UserMenu({ onOpenShortcuts }: { onOpenShortcuts?: () => void }) 
     setSignInEmail('');
   };
 
+  // ⚠ NO AUTHENTICATION IS IMPLEMENTED. This sets a role in the browser only; it grants
+  // nothing and the server neither sees it nor checks it. It used to sign you in as
+  // invented people at an invented company (amina.khan@acmemining.com and two others),
+  // which put fabricated identities on screen and implied an auth system that does not
+  // exist. The roles stay because they are how we show a reviewer's view, but they are
+  // now labelled as what they are.
   const handleQuickDemoSignIn = (role: 'Analyst' | 'Reviewer' | 'Admin') => {
     const emails = {
-      Analyst: 'amina.khan@acmemining.com',
-      Reviewer: 'sarah.chen@acmemining.com',
-      Admin: 'admin@acmemining.com',
+      Analyst: 'analyst@local',
+      Reviewer: 'reviewer@local',
+      Admin: 'admin@local',
     };
     const names = {
       Analyst: 'Amina Khan',
@@ -122,8 +128,11 @@ export function UserMenu({ onOpenShortcuts }: { onOpenShortcuts?: () => void }) 
 
               {/* Quick Persona Demo Logins */}
               <div style={{ marginBottom: 18 }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>
-                  Quick Demo Access (One-click)
+                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>
+                  View as role
+                </span>
+                <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', display: 'block', marginBottom: 8 }}>
+                  Local only — no authentication is implemented and the server does not check this.
                 </span>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
                   <button

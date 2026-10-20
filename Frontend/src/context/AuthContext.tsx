@@ -15,13 +15,18 @@ export interface UserProfile {
   dateFormat: string;
 }
 
+// ⚠ This was a fabricated person at a fabricated company — "Amina Khan, Senior ESG &
+// Operational Analyst, Acme Mining & Metals Global" — signed in by default. On a screen
+// that exists to prove provenance, an invented identity presented as the current user is
+// the one thing we cannot afford to show. There is no authentication here, so the
+// default says so.
 const DEFAULT_USER: UserProfile = {
-  id: 'usr-001',
-  name: 'Amina Khan',
-  email: 'amina.khan@acmemining.com',
+  id: 'local',
+  name: 'Local analyst',
+  email: 'analyst@local',
   role: 'Analyst',
-  jobTitle: 'Senior ESG & Operational Analyst',
-  organization: 'Acme Mining & Metals Global',
+  jobTitle: 'Analyst (local session — no authentication)',
+  organization: '',
   avatarUrl: '',
   timezone: 'Asia/Karachi',
   language: 'English (US)',

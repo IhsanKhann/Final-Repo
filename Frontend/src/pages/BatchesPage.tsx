@@ -163,8 +163,38 @@ export function BatchesPage() {
         {isLoading ? (
           <TableSkeleton rows={5} cols={7} />
         ) : filteredBatches.length === 0 ? (
+          /* Two different nothings. "No results for your filter" and "you have not run
+             anything yet" need different words and different actions: the first asks you
+             to widen the filter, the second asks you to upload. Showing the filter message
+             on a first visit tells a new user their filter is wrong when they have not set
+             one, and offers them nothing to do. */
           <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--color-text-muted)' }}>
-            <p style={{ fontSize: '0.95rem' }}>No batches matching current filters.</p>
+            {(batches?.length ?? 0) === 0 ? (
+              <>
+                <p style={{ fontSize: '1rem', color: 'var(--color-text-primary)', fontWeight: 600, marginBottom: 6 }}>
+                  No documents processed yet
+                </p>
+                <p style={{ fontSize: '0.875rem', marginBottom: 18 }}>
+                  Upload PDFs, spreadsheets, HTML pages or narrative text and they will be
+                  standardized against the active schema pack.
+                </p>
+                <button className="btn btn-primary btn-sm" onClick={() => navigate('/upload')}>
+                  Upload documents
+                </button>
+              </>
+            ) : (
+              <>
+                <p style={{ fontSize: '0.95rem', marginBottom: 12 }}>
+                  No batches match the current filters — {batches?.length} exist in total.
+                </p>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => { setSelectedPackFilter('all'); setSelectedStatusFilter('all'); }}
+                >
+                  Clear filters
+                </button>
+              </>
+            )}
           </div>
         ) : (
           <div className="table-wrapper">

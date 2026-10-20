@@ -10,7 +10,10 @@ import { getHealth, getPacks } from '../../api/client';
 import { useActivePack } from '../../context/AppContext';
 import { UserMenu } from './UserMenu';
 
-const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true';
+// The MOCK DATA banner and its flag are gone with the mock path itself. A banner that
+// only appears in one mode is a reassurance you cannot see when it matters: its
+// ABSENCE was supposed to mean the data is real, which is not something a missing
+// element can tell anyone. Health reports what is actually configured instead.
 
 interface NavItemDef {
   to: string;
@@ -59,13 +62,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="app-root-container">
-      {/* Slim Top Mock Banner across full window width */}
-      {USE_MOCK && (
-        <div className="mock-banner" role="banner" aria-label="Mock data mode active">
-          ⚠ MOCK DATA — Development Only — Not Real Results
-        </div>
-      )}
-
       {/* Main Flex App Shell */}
       <div className="app-shell">
         {/* Sidebar */}

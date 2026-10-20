@@ -372,13 +372,6 @@ export function SettingsPage() {
     );
   };
 
-  const handleResetDemoData = () => {
-    addToast({
-      type: 'info',
-      title: 'Demo Store Re-initialized',
-      message: 'All mock documents, mappings, and learned corrections reset.',
-    });
-  };
 
   const navItems = [
     { id: 'profile' as const, label: 'Profile', icon: <User size={16} />, badge: user ? undefined : 'Sign in' },
@@ -563,7 +556,7 @@ export function SettingsPage() {
                   <input
                     type="email"
                     readOnly
-                    value={user?.email ?? 'amina.khan@acmemining.com'}
+                    value={user?.email ?? 'analyst@local'}
                     style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}
                   />
                 </div>
@@ -591,7 +584,7 @@ export function SettingsPage() {
                     <input
                       type="text"
                       readOnly
-                      value={user?.organization ?? 'Acme Mining & Metals Global'}
+                      value={user?.organization ?? ''}
                       style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}
                     />
                   </div>
@@ -1265,20 +1258,23 @@ export function SettingsPage() {
                     Data Store Management
                   </h2>
                   <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginTop: 2 }}>
-                    Re-seed mock demonstrations, reset local caches, or flush telemetry.
+                    Where this instance keeps its records.
                   </p>
                 </div>
 
+                {/* The "Reset Mock Demo Store" button lived here. It claimed to
+                    re-populate Mining, Shipping and Finance documents and learned rules,
+                    and did nothing at all except show a toast saying it had. A control
+                    that reports success for work it never did is worse than no control:
+                    it teaches an operator to trust a screen that cannot be trusted. */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: 'var(--color-surface-2)', borderRadius: 8, border: '1px solid var(--color-border)' }}>
                   <div>
-                    <strong style={{ fontSize: '0.875rem' }}>Reset Mock Demo Store</strong>
+                    <strong style={{ fontSize: '0.875rem' }}>Records live on the server</strong>
                     <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                      Re-populates default Mining, Shipping, and Finance mock documents and learned rules.
+                      Batches, mappings and the evidence ledger are append-only and are not
+                      resettable from this screen. Upload a new batch to add to them.
                     </div>
                   </div>
-                  <button className="btn btn-secondary btn-sm" onClick={handleResetDemoData}>
-                    <RefreshCw size={13} /> Reset Mock Data
-                  </button>
                 </div>
               </div>
             )}
