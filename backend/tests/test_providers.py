@@ -12,6 +12,7 @@ pure functions and a transport is an injected Protocol.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -618,11 +619,19 @@ def test_no_module_under_intelligence_performs_io_at_import_time():
     not need.
     """
     result = subprocess.run(
+        # No -I: isolated mode ignores PYTHONPATH, and PYTHONPATH is how the child finds
+        # the repo. The probe sabotages socket and sqlite3 itself, which is the isolation
+        # this test actually needs.
         [sys.executable, "-c", _IMPORT_PROBE],
         cwd=str(REPO_ROOT),
-        env={"PYTHONPATH": str(REPO_ROOT), "SYSTEMROOT": "C:\\Windows", "PATH": ""},
+        env={**os.environ, "PYTHONPATH": str(REPO_ROOT)},
         capture_output=True,
         text=True,
+        # ⚠ stdin=DEVNULL is required, not tidiness. Under pytest's capture on Windows the
+        # inherited stdin handle is already closed, and Popen's _make_inheritable raises
+        # OSError [WinError 6] "The handle is invalid" before the child ever starts -- so
+        # the test fails for a reason that has nothing to do with what it asserts.
+        stdin=subprocess.DEVNULL,
     )
     assert result.returncode == 0, result.stderr
     assert "clean" in result.stdout

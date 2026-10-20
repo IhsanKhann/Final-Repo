@@ -47,7 +47,7 @@ import fitz  # PyMuPDF
 
 # The single source of truth for terminology. Imported, not copied, on purpose -- see the
 # module docstring. This module never writes to it.
-from backend.eval.make_golden_set import REPORTING_STYLE
+from backend.eval.make_golden_set import PROPOSED_FIELD, REPORTING_STYLE
 
 # --- Where things live --------------------------------------------------------
 
@@ -201,8 +201,15 @@ def _col_letter(index_zero_based: int) -> str:
 
 
 def _monthly_text(rate_pct: float) -> str:
-    """The nominal quoted per month. Six decimals so x12 recovers the annual to 1e-4."""
-    return f"{rate_pct / 12.0:.6f}"
+    """The nominal quoted per month.
+
+    Four decimals, not more, because `make_golden_set` writes `value_as_printed` as
+    `f"{rate/12:.4f}"` and the document has to print the figure the golden set says it
+    prints. The cost is that x12 recovers the annual rate to within 0.0005 rather than
+    exactly, so a scorer must compare numerically with a tolerance -- which is recorded
+    per row as `recovered_annual_pct`, not left for anyone to rediscover.
+    """
+    return f"{rate_pct / 12.0:.4f}"
 
 
 def _recovered_annual(monthly_text: str) -> float:
@@ -348,6 +355,43 @@ def _xlsx_bytes(sheet_name: str, grid: list[list[object]]) -> bytes:
 
 _SHEET_NAME = "Rates"
 
+#: Ours, not the imported table's: `product_type` is not one of the five fields the golden
+#: set declares a label for, and a table needs a first column.
+_PRODUCT_HEADING = "Product"
+
+#: Column order is this module's business; the words in the headings are not. Every tabular
+#: format lays the columns out the same way so that a difference between two documents is
+#: always a difference in vocabulary, never in which column is which.
+_COLUMN_ORDER = ("term_months", "rate_pct", "apy_pct", "min_deposit", "effective_date")
+
+
+def _labels(institution: str) -> dict[str, str]:
+    style = REPORTING_STYLE.get(institution)
+    if style is None:
+        raise ValueError(
+            f"{institution!r} has no entry in make_golden_set.REPORTING_STYLE, so there is "
+            "no agreed vocabulary to render it with"
+        )
+    return style["labels"]
+
+
+def _declared_format(institution: str) -> str:
+    return REPORTING_STYLE[institution]["format"]
+
+
+def _headers(institution: str) -> tuple[str, ...]:
+    labels = _labels(institution)
+    return (_PRODUCT_HEADING,) + tuple(labels[column] for column in _COLUMN_ORDER)
+
+
+def _header_map(institution: str) -> dict[str, str]:
+    """Written heading -> canonical field. This is the answer key for mapping accuracy."""
+    labels = _labels(institution)
+    mapping = {_PRODUCT_HEADING: "product_type"}
+    for column in _COLUMN_ORDER:
+        mapping[labels[column]] = PROPOSED_FIELD[column]
+    return mapping
+
 
 def _truth(row: Row, *, page: int | None, as_written: dict[str, str], **extra: object) -> dict:
     record = {
@@ -369,16 +413,19 @@ def _truth(row: Row, *, page: int | None, as_written: dict[str, str], **extra: o
     return record
 
 
+_FIRST_NATIONAL = "First National Bank"
+
+
 def _build_first_national(rows: list[Row]) -> dict:
-    headers = ("Product", "Term", "Rate", "APY", "Min. Deposit", "Effective")
+    """Conventional headings, ISO dates, bare percentages: the control case."""
+    headers = _headers(_FIRST_NATIONAL)
     doc = fitz.open()
     truths: list[dict] = []
     for page_no, page_rows in enumerate(_paginate(rows), start=1):
         body = []
         for row in page_rows:
-            term = "None" if row.term_months == 0 else f"{row.term_months} mo"
             cells = (
-                row.product, term, row.rate_text, row.apy_text,
+                row.product, str(row.term_months), row.rate_text, row.apy_text,
                 _money(row.min_deposit), _iso(row.effective_date),
             )
             body.append(cells)
@@ -387,7 +434,7 @@ def _build_first_national(rows: list[Row]) -> dict:
             )
         _paint_table_page(
             doc,
-            title="First National Bank",
+            title=_FIRST_NATIONAL,
             subtitle=f"Deposit Account Rates - page {page_no}",
             headers=headers,
             body=body,
@@ -398,31 +445,26 @@ def _build_first_national(rows: list[Row]) -> dict:
     return {
         "file": "first_national_bank_rates.pdf",
         "media_type": "application/pdf",
-        "format": "pdf_text",
+        "format": _declared_format(_FIRST_NATIONAL),
         "bytes": payload,
         "rows": truths,
-        "header_map": {
-            "Product": "product_type",
-            "Term": "term_months",
-            "Rate": "interest_rate_annual_pct",
-            "APY": "annual_percentage_yield_pct",
-            "Min. Deposit": "minimum_deposit_usd",
-            "Effective": "effective_date",
-        },
+        "header_map": _header_map(_FIRST_NATIONAL),
     }
+
+
+_METRO = "Metro Credit Union"
 
 
 def _build_metro(rows: list[Row]) -> dict:
     """Same table, different words, then flattened to pixels so there is no text layer."""
-    headers = ("Product", "Term", "Interest", "Annual Yield", "Minimum Balance", "Effective")
+    headers = _headers(_METRO)
     source = fitz.open()
     truths: list[dict] = []
     for page_no, page_rows in enumerate(_paginate(rows), start=1):
         body = []
         for row in page_rows:
-            term = "Demand" if row.term_months == 0 else f"{row.term_months} months"
             cells = (
-                row.product, term, f"{row.rate_text}%", f"{row.apy_text}%",
+                row.product, str(row.term_months), f"{row.rate_text}%", f"{row.apy_text}%",
                 _money(row.min_deposit), _us(row.effective_date),
             )
             body.append(cells)
@@ -431,7 +473,7 @@ def _build_metro(rows: list[Row]) -> dict:
             )
         _paint_table_page(
             source,
-            title="Metro Credit Union",
+            title=_METRO,
             subtitle=f"Share Account Disclosure - page {page_no}",
             headers=headers,
             body=body,
@@ -449,37 +491,33 @@ def _build_metro(rows: list[Row]) -> dict:
     return {
         "file": "metro_credit_union_rates_scan.pdf",
         "media_type": "application/pdf",
-        "format": "pdf_scan",
+        "format": _declared_format(_METRO),
         "bytes": payload,
         "rows": truths,
-        "header_map": {
-            "Product": "product_type",
-            "Term": "term_months",
-            "Interest": "interest_rate_annual_pct",
-            "Annual Yield": "annual_percentage_yield_pct",
-            "Minimum Balance": "minimum_deposit_usd",
-            "Effective": "effective_date",
-        },
+        "header_map": _header_map(_METRO),
     }
 
 
+_HERITAGE = "Heritage Financial"
+
+
 def _build_heritage(rows: list[Row]) -> dict:
-    headers = ("Product", "Term", "p.a. %", "effective yield", "Minimum", "Effective from")
+    """Lowercase headings and a space before the percent sign, per DATASETS.md section 1."""
+    headers = _headers(_HERITAGE)
     truths: list[dict] = []
     lines = [
         "<!DOCTYPE html>",
         '<html lang="en">',
-        "<head><meta charset=\"utf-8\"><title>Heritage Financial - Deposit Rates</title></head>",
+        '<head><meta charset="utf-8"><title>Heritage Financial - Deposit Rates</title></head>',
         "<body>",
-        "<h1>Heritage Financial</h1>",
+        f"<h1>{_HERITAGE}</h1>",
         "<p>Current deposit rates, quoted per annum.</p>",
         "<table>",
         "<tr>" + "".join(f"<th>{h}</th>" for h in headers) + "</tr>",
     ]
     for row in rows:
-        term = "n/a" if row.term_months == 0 else str(row.term_months)
         cells = (
-            row.product, term, f"{row.rate_text} %", f"{row.apy_text} %",
+            row.product, str(row.term_months), f"{row.rate_text} %", f"{row.apy_text} %",
             _money(row.min_deposit), _abbr(row.effective_date),
         )
         lines.append("<tr>" + "".join(f"<td>{c}</td>" for c in cells) + "</tr>")
@@ -494,26 +532,19 @@ def _build_heritage(rows: list[Row]) -> dict:
     return {
         "file": "heritage_financial_rates.html",
         "media_type": "text/html",
-        "format": "html",
+        "format": _declared_format(_HERITAGE),
         "bytes": "\n".join(lines).encode("utf-8"),
         "rows": truths,
-        "header_map": {
-            "Product": "product_type",
-            "Term": "term_months",
-            "p.a. %": "interest_rate_annual_pct",
-            "effective yield": "annual_percentage_yield_pct",
-            "Minimum": "minimum_deposit_usd",
-            "Effective from": "effective_date",
-        },
+        "header_map": _header_map(_HERITAGE),
     }
+
+
+_PACIFIC = "Pacific Savings"
 
 
 def _build_pacific(rows: list[Row]) -> dict:
     """The one document that quotes a monthly nominal. x12 is what recovers the truth."""
-    headers = (
-        "Product", "Term (months)", "Nominal (monthly)", "Annual Yield",
-        "Minimum Opening Deposit", "Effective Date",
-    )
+    headers = _headers(_PACIFIC)
     grid: list[list[object]] = [list(headers)]
     truths: list[dict] = []
     for offset, row in enumerate(rows):
@@ -523,18 +554,15 @@ def _build_pacific(rows: list[Row]) -> dict:
             row.min_deposit, row.effective_date,
         ])
         sheet_row = offset + 2  # row 1 holds the headings
+        written = (
+            row.product, str(row.term_months), monthly, row.apy_text,
+            str(row.min_deposit), row.effective_date,
+        )
         truths.append(
             _truth(
                 row,
                 page=None,
-                as_written={
-                    "Product": row.product,
-                    "Term (months)": str(row.term_months),
-                    "Nominal (monthly)": monthly,
-                    "Annual Yield": row.apy_text,
-                    "Minimum Opening Deposit": str(row.min_deposit),
-                    "Effective Date": row.effective_date,
-                },
+                as_written=dict(zip(headers, written)),
                 cells={
                     "product_type": f"A{sheet_row}",
                     "term_months": f"B{sheet_row}",
@@ -551,18 +579,11 @@ def _build_pacific(rows: list[Row]) -> dict:
     return {
         "file": "pacific_savings_rates.xlsx",
         "media_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "format": "xlsx",
+        "format": _declared_format(_PACIFIC),
         "bytes": _xlsx_bytes(_SHEET_NAME, grid),
         "rows": truths,
         "sheet": _SHEET_NAME,
-        "header_map": {
-            "Product": "product_type",
-            "Term (months)": "term_months",
-            "Nominal (monthly)": "interest_rate_annual_pct",
-            "Annual Yield": "annual_percentage_yield_pct",
-            "Minimum Opening Deposit": "minimum_deposit_usd",
-            "Effective Date": "effective_date",
-        },
+        "header_map": _header_map(_PACIFIC),
     }
 
 

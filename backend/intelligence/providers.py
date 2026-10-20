@@ -11,7 +11,7 @@ What this module refuses to do:
     no wifi by feeding a recorded response dict in and asserting the parse. Transport is
     injected from `base.py`; see `Transport` there.
   * It refuses to read a key. Keys come from `engine.config.secret_for`, resolved by the
-    caller and passed in. Nothing here touches os.environ or a .env file.
+    caller and passed in. Nothing here touches the process environment or a .env file.
   * It refuses to collapse failures into a boolean. Every failure is one of the named
     states in `FailureState`, which mirrors the `Unavailable.reason` literals exactly --
     a test asserts the two lists are the same, because a drifted name would reach the
