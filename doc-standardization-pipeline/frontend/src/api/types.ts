@@ -106,16 +106,91 @@ export interface Batch {
   };
 }
 
-// ─── SSE Agent Event ────────────────────────────────────────────────────────
-export interface AgentEvent {
-  id: string;
-  agent: string;
-  step: string;
-  status: 'running' | 'done' | 'error';
-  message: string;
-  timestamp: string;
-  file_id?: string;
+// ─── SSE Pipeline Progress Contract ─────────────────────────────────────────
+export type PipelineStepKey = 'ingest' | 'parse' | 'map' | 'normalize' | 'validate' | 'ready';
+export type StepStatus = 'waiting' | 'running' | 'done' | 'warning' | 'failed' | 'cancelled';
+export type ProgressUnit = 'files' | 'pages' | 'fields' | 'records';
+
+export interface StepProgressEvent {
+  type: 'step_progress';
+  batch_id: string;
+  step: PipelineStepKey;
+  status: StepStatus;
+  done: number;
+  total: number | null;
+  unit: ProgressUnit;
+  message?: string;
+  flagged?: number;
+  run_id?: string;
+  ts: number;
 }
+
+export interface FileProgressEvent {
+  type: 'file_progress';
+  batch_id: string;
+  file_id: string;
+  file_name: string;
+  step: PipelineStepKey;
+  status: 'waiting' | 'running' | 'done' | 'warning' | 'failed' | 'cancelled';
+  done: number;
+  total: number | null;
+  unit: ProgressUnit;
+  message?: string;
+  ts?: number;
+}
+
+export interface LogEvent {
+  type: 'log';
+  agent: string;
+  level: 'info' | 'success' | 'warn' | 'error';
+  message: string;
+  ts: number;
+  file_id?: string;
+  file_name?: string;
+}
+
+export interface BatchDoneEvent {
+  type: 'batch_done';
+  batch_id: string;
+  summary: {
+    fields: number;
+    flagged: number;
+    auto_approved?: number;
+  };
+  ts?: number;
+}
+
+export interface BatchErrorEvent {
+  type: 'error';
+  batch_id: string;
+  step?: PipelineStepKey;
+  file_id?: string;
+  code: string;
+  message: string;
+  retryable: boolean;
+  ts?: number;
+}
+
+// Legacy event shape for backwards compatibility
+export interface AgentEvent {
+  id?: string;
+  type?: string;
+  agent?: string;
+  step?: string;
+  status?: string;
+  message?: string;
+  timestamp?: string;
+  file_id?: string;
+  [key: string]: any;
+}
+
+export type PipelineEvent =
+  | StepProgressEvent
+  | FileProgressEvent
+  | LogEvent
+  | BatchDoneEvent
+  | BatchErrorEvent
+  | AgentEvent;
 
 // ─── Document ───────────────────────────────────────────────────────────────
 export interface Document {

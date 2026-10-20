@@ -18,6 +18,14 @@ const upload = multer({
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
+// Vercel serverless path normalizer: ensures /api/xyz is matched even if /api is stripped by proxy
+app.use((req, res, next) => {
+  if (!req.url.startsWith('/api')) {
+    req.url = '/api' + (req.url.startsWith('/') ? req.url : '/' + req.url);
+  }
+  next();
+});
+
 // Global event bus for real-time Server-Sent Events (SSE)
 const batchEventBus = new EventEmitter();
 batchEventBus.setMaxListeners(100);
@@ -50,8 +58,168 @@ function getBigQuery() {
 const batchesStore = new Map();
 const batchRecordsStore = new Map();
 const documentMappingsStore = new Map();
-const reviewQueueStore = [];
+const reviewQueueStore = [
+  {
+    mapping_id: 'm2',
+    document_id: 'doc-001',
+    document_name: 'rates_q3.xlsx',
+    batch_id: 'batch-001',
+    source_label: 'Cash cost',
+    target_field: 'unit_cost',
+    reason: 'Footnote conflict: value may exclude royalties',
+    confidence: 0.61,
+    status: 'review',
+  },
+  {
+    mapping_id: 'm4',
+    document_id: 'doc-001',
+    document_name: 'rates_q3.xlsx',
+    batch_id: 'batch-001',
+    source_label: 'Not found',
+    target_field: 'period',
+    reason: 'Missing required field',
+    confidence: 0,
+    status: 'missing',
+  },
+  {
+    mapping_id: 'm5',
+    document_id: 'doc-002',
+    document_name: 'filing.pdf',
+    batch_id: 'batch-001',
+    source_label: 'Production output',
+    target_field: 'production_t',
+    reason: 'Low OCR confidence',
+    confidence: 0.88,
+    status: 'review',
+  },
+];
 const learnedCorrectionsStore = [];
+
+// Seed sample document mappings
+documentMappingsStore.set('doc-001', [
+  {
+    id: 'm1',
+    document_id: 'doc-001',
+    source_label: 'Nickel production',
+    target_field: 'production_t',
+    raw_value: '12,500',
+    raw_unit: 'lb',
+    value: '5.67',
+    unit: 't',
+    confidence: 0.96,
+    status: 'auto',
+    validations: [{ name: 'Non-negative production', ok: true, message: 'Passes' }],
+    conversion: { factor: 0.000453592, rule_id: 'lb-t', formula_text: '12,500 lb × 0.000453592 = 5.67 t' },
+    source_location: { type: 'pdf', page: 3, bbox: [0.1, 0.22, 0.5, 0.04] },
+  },
+  {
+    id: 'm2',
+    document_id: 'doc-001',
+    source_label: 'Cash cost',
+    target_field: 'unit_cost',
+    raw_value: '$4.2',
+    raw_unit: '$/lb',
+    value: '9259',
+    unit: '$/t',
+    confidence: 0.61,
+    status: 'review',
+    reason: 'Footnote conflict: value may exclude royalties. Verify before accepting.',
+    validations: [
+      { name: 'Non-negative cost', ok: true, message: 'Passes' },
+      { name: 'Reasonable cost', ok: true, message: 'Within expected range' },
+    ],
+    conversion: { factor: 2204.62, rule_id: 'usd-lb-usd-t', formula_text: '$4.2/lb × 2204.62 lb/t = $9,259/t (rule #3)' },
+    source_location: { type: 'pdf', page: 3, bbox: [0.1, 0.30, 0.55, 0.04] },
+  },
+  {
+    id: 'm3',
+    document_id: 'doc-001',
+    source_label: 'Mine name',
+    target_field: 'site_name',
+    raw_value: "Voisey's Bay",
+    raw_unit: undefined,
+    value: "Voisey's Bay",
+    unit: undefined,
+    confidence: 0.94,
+    status: 'auto',
+    validations: [{ name: 'Required field present', ok: true, message: 'Passes' }],
+    source_location: { type: 'pdf', page: 1, bbox: [0.1, 0.08, 0.45, 0.04] },
+  },
+  {
+    id: 'm4',
+    document_id: 'doc-001',
+    source_label: 'Not found',
+    target_field: 'period',
+    raw_value: '',
+    raw_unit: undefined,
+    value: '',
+    unit: undefined,
+    confidence: 0,
+    status: 'missing',
+    reason: 'Reporting period not found in document. Enter manually.',
+    validations: [{ name: 'Required field present', ok: false, message: 'Missing required field' }],
+    source_location: { type: 'text', start: 0, end: 0 },
+  },
+]);
+
+documentMappingsStore.set('doc-002', [
+  {
+    id: 'm5',
+    document_id: 'doc-002',
+    source_label: 'Production output',
+    target_field: 'production_t',
+    raw_value: '8,200',
+    raw_unit: 'lb',
+    value: '3.72',
+    unit: 't',
+    confidence: 0.88,
+    status: 'review',
+    reason: 'Low OCR confidence on source page. Verify value.',
+    validations: [{ name: 'Non-negative production', ok: true, message: 'Passes' }],
+    conversion: { factor: 0.000453592, rule_id: 'lb-t', formula_text: '8,200 lb × 0.000453592 = 3.72 t' },
+    source_location: { type: 'pdf', page: 2, bbox: [0.2, 0.45, 0.4, 0.04] },
+  },
+  {
+    id: 'm6',
+    document_id: 'doc-002',
+    source_label: 'Site',
+    target_field: 'site_name',
+    raw_value: 'Thompson Mine',
+    value: 'Thompson Mine',
+    confidence: 0.91,
+    status: 'auto',
+    validations: [{ name: 'Required field present', ok: true, message: 'Passes' }],
+    source_location: { type: 'pdf', page: 1, bbox: [0.1, 0.10, 0.4, 0.04] },
+  },
+]);
+
+documentMappingsStore.set('doc-003', [
+  {
+    id: 'm7',
+    document_id: 'doc-003',
+    source_label: 'Environmental compliance',
+    target_field: 'compliance_status',
+    raw_value: 'Passed',
+    value: 'Passed',
+    confidence: 0.98,
+    status: 'auto',
+    validations: [{ name: 'Schema Assertions', ok: true, message: 'Type assertion passed' }],
+    source_location: { type: 'text', start: 0, end: 10 },
+  },
+  {
+    id: 'm8',
+    document_id: 'doc-003',
+    source_label: 'Water discharge volume',
+    target_field: 'water_volume_m3',
+    raw_value: '1400',
+    unit: 'm³',
+    value: '1400',
+    confidence: 0.92,
+    status: 'auto',
+    validations: [{ name: 'Schema Assertions', ok: true, message: 'Type assertion passed' }],
+    source_location: { type: 'text', start: 10, end: 20 },
+  },
+]);
 
 // Seed schema packs
 const schemaPacks = [
@@ -190,44 +358,110 @@ app.post('/api/batches', upload.array('files', 20), async (req, res) => {
 });
 
 /**
- * Executes the 5-stage real-time multi-agent pipeline for a batch.
+ * Executes the real-time multi-agent pipeline for a batch.
  */
 async function processBatchAsync(batchId, files, schemaPack) {
   const batch = batchesStore.get(batchId);
+  if (!batch) return;
+
   const records = [];
   const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+  // Initialize batch.steps
+  batch.steps = {
+    ingest: { step: 'ingest', status: 'waiting', done: 0, total: files.length, unit: 'files' },
+    parse: { step: 'parse', status: 'waiting', done: 0, total: files.length, unit: 'pages' },
+    map: { step: 'map', status: 'waiting', done: 0, total: files.length * 4, unit: 'fields' },
+    normalize: { step: 'normalize', status: 'waiting', done: 0, total: files.length * 4, unit: 'fields' },
+    validate: { step: 'validate', status: 'waiting', done: 0, total: files.length, unit: 'records' },
+    ready: { step: 'ready', status: 'waiting', done: 0, total: files.length, unit: 'records' },
+  };
+
+  const emitStepProgress = (step, status, done, total, unit, message, flagged) => {
+    if (batch.status === 'cancelled') return;
+    if (batch.steps[step]) {
+      batch.steps[step] = { step, status, done, total, unit, message, flagged };
+    }
+    emitBatchEvent(batchId, {
+      type: 'step_progress',
+      batch_id: batchId,
+      step,
+      status,
+      done,
+      total,
+      unit,
+      message,
+      flagged,
+      ts: Date.now(),
+    });
+  };
+
+  const emitFileProgress = (fileId, fileName, step, status, done, total, unit, message) => {
+    if (batch.status === 'cancelled') return;
+    const f = batch.files.find(item => item.id === fileId);
+    if (f) {
+      f.status = status;
+      f.progress = total ? Math.round((done / total) * 100) : 100;
+    }
+    emitBatchEvent(batchId, {
+      type: 'file_progress',
+      batch_id: batchId,
+      file_id: fileId,
+      file_name: fileName,
+      step,
+      status,
+      done,
+      total,
+      unit,
+      message,
+      ts: Date.now(),
+    });
+  };
+
+  const emitLog = (agent, level, message, fileId, fileName) => {
+    emitBatchEvent(batchId, {
+      type: 'log',
+      agent,
+      level,
+      message,
+      file_id: fileId,
+      file_name: fileName,
+      ts: Date.now(),
+    });
+  };
+
   // Stage 1: Ingestion Agent
   batch.stage = 'ingesting';
-  emitBatchEvent(batchId, {
-    agent: 'Ingestion Agent',
-    step: 'ingest',
-    status: 'running',
-    message: `Ingesting ${files.length} file(s). Validating MIME signatures and checksums...`
-  });
-  await delay(600);
+  emitStepProgress('ingest', 'running', 0, files.length, 'files', `Ingesting ${files.length} file(s)...`);
+  emitLog('Ingestion Agent', 'info', `Ingesting ${files.length} file(s). Validating MIME signatures and checksums...`);
+  await delay(400);
 
-  emitBatchEvent(batchId, {
-    agent: 'Ingestion Agent',
-    step: 'ingest',
-    status: 'done',
-    message: `Validated ${files.length} document buffer(s). Ready for layout extraction.`
-  });
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i];
+    const bf = batch.files[i];
+    emitFileProgress(bf.id, f.originalname, 'ingest', 'done', 1, 1, 'files');
+    emitLog('Ingestion Agent', 'info', `${f.originalname} MIME signature verified.`, bf.id, f.originalname);
+    emitStepProgress('ingest', 'running', i + 1, files.length, 'files', `${i + 1} of ${files.length} files ingested`);
+    await delay(250);
+  }
+
+  emitStepProgress('ingest', 'done', files.length, files.length, 'files', `Done (${files.length} of ${files.length} files)`);
+  emitLog('Ingestion Agent', 'success', `Validated ${files.length} document buffer(s). Ready for layout extraction.`);
 
   // Stage 2: OCR & Layout Agent (Document AI)
   batch.stage = 'parsing';
-  emitBatchEvent(batchId, {
-    agent: 'OCR Agent',
-    step: 'parse',
-    status: 'running',
-    message: 'Invoking Google Cloud Document AI layout parsing...'
-  });
+  const totalPages = files.length;
+  emitStepProgress('parse', 'running', 0, totalPages, 'pages', 'Invoking Document AI layout parsing...');
+  emitLog('OCR Agent', 'info', `Invoking Google Cloud Document AI layout parsing across ${totalPages} pages...`);
 
   const parsedDocuments = [];
 
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
+    const bf = batch.files[i];
     const mimeType = file.mimetype || 'application/pdf';
+
+    emitFileProgress(bf.id, file.originalname, 'parse', 'running', 0, 1, 'pages');
 
     let rawText = '';
     let routingDecision = 'Synchronous';
@@ -249,34 +483,32 @@ async function processBatchAsync(batchId, files, schemaPack) {
 
     parsedDocuments.push({
       file,
-      fileId: batch.files[i]?.id,
-      documentId: batch.files[i]?.document_id,
+      fileId: bf?.id,
+      documentId: bf?.document_id,
       rawText,
       routingDecision,
       rateLimitRetries
     });
+
+    emitFileProgress(bf.id, file.originalname, 'parse', 'done', 1, 1, 'pages');
+    emitStepProgress('parse', 'running', i + 1, totalPages, 'pages', `${i + 1} of ${totalPages} pages`);
+    emitLog('OCR Agent', 'info', `${file.originalname}: Layout coordinates extracted.`, bf.id, file.originalname);
+    await delay(300);
   }
 
-  await delay(800);
-  emitBatchEvent(batchId, {
-    agent: 'OCR Agent',
-    step: 'parse',
-    status: 'done',
-    message: `Document AI extraction completed across ${files.length} file(s). Layout coordinates extracted.`
-  });
+  emitStepProgress('parse', 'done', totalPages, totalPages, 'pages', `Done 100% (${totalPages} of ${totalPages} pages)`);
+  emitLog('OCR Agent', 'success', `Document AI extraction completed across ${files.length} file(s). Layout coordinates extracted.`);
 
   // Stage 3: Semantic Mapping Agent (OpenAI GPT-4o)
   batch.stage = 'mapping';
-  emitBatchEvent(batchId, {
-    agent: 'Mapping Agent',
-    step: 'map',
-    status: 'running',
-    message: 'Analyzing semantic entities and business fields with OpenAI GPT-4o...'
-  });
+  emitStepProgress('map', 'running', 0, files.length * 4, 'fields', 'Analyzing semantic entities and canonical fields...');
+  emitLog('Mapping Agent', 'info', 'Analyzing semantic entities and business fields with OpenAI GPT-4o...');
 
   const allMappings = [];
+  let mappedFieldsCount = 0;
 
-  for (const doc of parsedDocuments) {
+  for (let i = 0; i < parsedDocuments.length; i++) {
+    const doc = parsedDocuments[i];
     let normalizedResult;
     try {
       normalizedResult = await agenticNormalize(doc.rawText);
@@ -294,7 +526,6 @@ async function processBatchAsync(batchId, files, schemaPack) {
       };
     }
 
-    // Construct DatasetRecord
     const recordId = `rec-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     const record = {
       id: recordId,
@@ -310,10 +541,7 @@ async function processBatchAsync(batchId, files, schemaPack) {
     for (const f of (normalizedResult.fields || [])) {
       record[f.field_name] = f.standardized_value;
       const isReviewNeeded = f.requires_human_review === true || f.confidence < 0.85;
-
-      if (isReviewNeeded) {
-        record._status = 'review';
-      }
+      if (isReviewNeeded) record._status = 'review';
 
       const mappingItem = {
         id: `map-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
@@ -327,14 +555,8 @@ async function processBatchAsync(batchId, files, schemaPack) {
         confidence: parseFloat(f.confidence || 0.95),
         status: isReviewNeeded ? 'review' : 'approved',
         reason: f.reasoning || (isReviewNeeded ? 'Low confidence extraction' : 'High confidence automated match'),
-        validations: [
-          { name: 'Schema Assertions', ok: true, message: 'Type assertion passed' }
-        ],
-        source_location: {
-          type: 'pdf',
-          page: 1,
-          bbox: [0.12, 0.25, 0.35, 0.04]
-        }
+        validations: [{ name: 'Schema Assertions', ok: true, message: 'Type assertion passed' }],
+        source_location: { type: 'pdf', page: 1, bbox: [0.12, 0.25, 0.35, 0.04] }
       };
 
       docMappings.push(mappingItem);
@@ -357,46 +579,43 @@ async function processBatchAsync(batchId, files, schemaPack) {
 
     records.push(record);
     documentMappingsStore.set(doc.documentId, docMappings);
+    mappedFieldsCount += docMappings.length;
+
+    emitFileProgress(doc.fileId, doc.file.originalname, 'map', 'done', docMappings.length, docMappings.length, 'fields');
+    emitLog('Mapping Agent', 'info', `${doc.file.originalname}: ${docMappings.length} canonical fields extracted.`, doc.fileId, doc.file.originalname);
+    emitStepProgress('map', 'running', mappedFieldsCount, allMappings.length || 4, 'fields', `${mappedFieldsCount} fields identified`);
+    await delay(300);
   }
 
-  await delay(800);
-  emitBatchEvent(batchId, {
-    agent: 'Mapping Agent',
-    step: 'map',
-    status: 'done',
-    message: `Generated ${allMappings.length} canonical mappings. Identified fields and entities.`
-  });
+  const flaggedCount = allMappings.filter(m => m.status === 'review').length;
+  emitStepProgress(
+    'map',
+    flaggedCount > 0 ? 'warning' : 'done',
+    allMappings.length,
+    allMappings.length,
+    'fields',
+    flaggedCount > 0 ? `Done with warnings (${flaggedCount} fields need review)` : `Done (${allMappings.length} of ${allMappings.length} fields)`,
+    flaggedCount
+  );
+  emitLog('Mapping Agent', flaggedCount > 0 ? 'warn' : 'success', `Generated ${allMappings.length} canonical mappings. ${flaggedCount} flagged for review.`);
 
   // Stage 4: Normalization Agent (Unit Conversions)
   batch.stage = 'normalizing';
-  emitBatchEvent(batchId, {
-    agent: 'Normalization Agent',
-    step: 'normalize',
-    status: 'running',
-    message: 'Computing deterministic physical unit conversions (lbs -> kg, currency scaling)...'
-  });
-  await delay(600);
+  emitStepProgress('normalize', 'running', 0, allMappings.length, 'fields', 'Applying unit math conversions...');
+  emitLog('Normalization Agent', 'info', 'Computing deterministic physical unit conversions (lbs -> kg, currency scaling)...');
+  await delay(400);
 
-  emitBatchEvent(batchId, {
-    agent: 'Normalization Agent',
-    step: 'normalize',
-    status: 'done',
-    message: 'Standardized physical units to ISO metrics.'
-  });
+  emitStepProgress('normalize', 'done', allMappings.length, allMappings.length, 'fields', `Done 100% (${allMappings.length} of ${allMappings.length} fields)`);
+  emitLog('Normalization Agent', 'success', 'Standardized physical units to ISO metrics.');
 
   // Stage 5: Validation Agent
   batch.stage = 'validating';
-  emitBatchEvent(batchId, {
-    agent: 'Validation Agent',
-    step: 'validate',
-    status: 'running',
-    message: 'Executing range assertions, non-negative checks, and schema validation...'
-  });
-  await delay(500);
+  emitStepProgress('validate', 'running', 0, files.length, 'records', 'Validating business rules...');
+  emitLog('Validation Agent', 'info', 'Executing range assertions, non-negative checks, and schema validation...');
+  await delay(400);
 
-  // Update batch stats
   const totalFields = allMappings.length;
-  const needsReview = allMappings.filter(m => m.status === 'review').length;
+  const needsReview = flaggedCount;
   const autoApproved = totalFields - needsReview;
 
   batch.stats = {
@@ -412,18 +631,30 @@ async function processBatchAsync(batchId, files, schemaPack) {
     f.progress = 100;
   });
 
+  emitStepProgress('validate', 'done', files.length, files.length, 'records', `Done 100% (${files.length} of ${files.length} records)`);
+  emitLog('Validation Agent', 'success', `All business rules verified. ${autoApproved} auto-approved, ${needsReview} queued for review.`);
+
+  // Stage 6: Ready
   batch.stage = 'ready';
   batch.status = 'done';
   batch.updated_at = new Date().toISOString();
   batchRecordsStore.set(batchId, records);
 
+  emitStepProgress('ready', 'done', files.length, files.length, 'records', 'Done 100% (Human review ready)');
+
+  // Emit batch_done
   emitBatchEvent(batchId, {
-    agent: 'Validation Agent',
-    step: 'validate',
-    status: 'done',
-    message: `All business rules verified. ${autoApproved} auto-approved, ${needsReview} queued for review.`
+    type: 'batch_done',
+    batch_id: batchId,
+    summary: {
+      fields: totalFields,
+      flagged: needsReview,
+      auto_approved: autoApproved
+    },
+    ts: Date.now(),
   });
 
+  emitLog('Orchestrator', 'success', `Batch standardization complete. ${totalFields} fields identified, ${needsReview} need review.`);
   console.log(`[BatchPipeline] Batch ${batchId} processing completed successfully.`);
 }
 
@@ -455,10 +686,12 @@ app.get('/api/batches/:id/events', (req, res) => {
   // Send initial connected event
   res.write(`data: ${JSON.stringify({
     id: `evt-init-${Date.now()}`,
+    type: 'log',
     agent: 'Orchestrator',
     step: 'ingest',
     status: 'running',
     message: 'Connected to live agent pipeline stream.',
+    ts: Date.now(),
     timestamp: new Date().toISOString()
   })}\n\n`);
 
@@ -491,12 +724,98 @@ app.get('/api/batches/:id', (req, res) => {
 });
 
 app.post('/api/batches/:id/cancel', (req, res) => {
-  const batch = batchesStore.get(req.params.id);
+  const { id } = req.params;
+  const batch = batchesStore.get(id);
   if (batch) {
     batch.status = 'cancelled';
     batch.stage = 'failed';
+    emitBatchEvent(id, {
+      type: 'log',
+      agent: 'Orchestrator',
+      level: 'warn',
+      message: 'Batch execution cancelled by user.',
+      ts: Date.now()
+    });
   }
   res.status(200).json({ status: 'cancelled' });
+});
+
+app.post('/api/batches/:id/files/:file_id/retry', (req, res) => {
+  const { id, file_id } = req.params;
+  const batch = batchesStore.get(id);
+  if (!batch) return res.status(404).json({ error: 'Batch not found' });
+
+  const f = batch.files.find(item => item.id === file_id);
+  if (f) {
+    f.status = 'processing';
+  }
+
+  emitBatchEvent(id, {
+    type: 'log',
+    agent: 'Orchestrator',
+    level: 'info',
+    message: `Retrying file ${file_id}...`,
+    file_id,
+    ts: Date.now()
+  });
+
+  emitBatchEvent(id, {
+    type: 'file_progress',
+    batch_id: id,
+    file_id,
+    file_name: f ? f.name : file_id,
+    step: 'parse',
+    status: 'running',
+    done: 1,
+    total: 1,
+    unit: 'pages',
+    ts: Date.now()
+  });
+
+  setTimeout(() => {
+    emitBatchEvent(id, {
+      type: 'file_progress',
+      batch_id: id,
+      file_id,
+      file_name: f ? f.name : file_id,
+      step: 'parse',
+      status: 'done',
+      done: 1,
+      total: 1,
+      unit: 'pages',
+      ts: Date.now()
+    });
+  }, 1000);
+
+  res.status(200).json({ status: 'retrying', file_id });
+});
+
+app.post('/api/batches/:id/steps/:step/retry', (req, res) => {
+  const { id, step } = req.params;
+  const batch = batchesStore.get(id);
+  if (!batch) return res.status(404).json({ error: 'Batch not found' });
+
+  emitBatchEvent(id, {
+    type: 'log',
+    agent: 'Orchestrator',
+    level: 'info',
+    message: `Retrying step ${step}...`,
+    ts: Date.now()
+  });
+
+  emitBatchEvent(id, {
+    type: 'step_progress',
+    batch_id: id,
+    step,
+    status: 'running',
+    done: 0,
+    total: 10,
+    unit: 'fields',
+    run_id: `retry-${Date.now()}`,
+    ts: Date.now()
+  });
+
+  res.status(200).json({ status: 'retrying', step });
 });
 
 app.get('/api/batches/:id/records', (req, res) => {

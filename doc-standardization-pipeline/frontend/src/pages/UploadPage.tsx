@@ -10,6 +10,8 @@ import {
 import { getPacks, createBatch, connectBatchEvents, cancelBatch } from '../api/client';
 import type { AgentEvent } from '../api/types';
 import { useToast, useActivePack } from '../context/AppContext';
+import { useBatchProgress } from '../hooks/useBatchProgress';
+import { LiveAgentExecution } from '../components/execution/LiveAgentExecution';
 
 interface UploadItem {
   id: string;
@@ -37,12 +39,14 @@ export function UploadPage() {
   const [reportUrl, setReportUrl] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [currentStage, setCurrentStage] = useState<string>('idle');
-  const [agentLogs, setAgentLogs] = useState<AgentEvent[]>([]);
-  const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
+  const [activeBatchId, setActiveBatchId] = useState<string | null>(() => {
+    return sessionStorage.getItem('activeBatchId') || null;
+  });
+
+  const batchProgress = useBatchProgress(activeBatchId || undefined);
+  const simulatorRef = useRef<any>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const logBottomRef = useRef<HTMLDivElement>(null);
 
   const { data: packs } = useQuery({
     queryKey: ['packs'],
@@ -118,7 +122,6 @@ export function UploadPage() {
       await cancelBatch(activeBatchId);
     }
     setIsProcessing(false);
-    setCurrentStage('idle');
     addToast({ type: 'warning', title: 'Pipeline Cancelled', message: 'Ingestion batch was halted.' });
   };
 
@@ -134,8 +137,6 @@ export function UploadPage() {
     }
 
     setIsProcessing(true);
-    setCurrentStage('ingest');
-    setAgentLogs([]);
 
     try {
       let filesToUpload = validItems.map(i => i.file).filter(Boolean) as File[];
@@ -152,25 +153,17 @@ export function UploadPage() {
       );
 
       setActiveBatchId(batch.id);
+      sessionStorage.setItem('activeBatchId', batch.id);
 
-      // Connect SSE stream
-      connectBatchEvents(batch.id, (event: AgentEvent) => {
-        setAgentLogs(prev => [...prev, event]);
-        if (event.step) setCurrentStage(event.step);
-
-        if (event.step === 'validate' && event.status === 'done') {
-          setCurrentStage('ready');
-          setIsProcessing(false);
-          addToast({
-            type: 'success',
-            title: 'Standardization Ready',
-            message: 'All fields mapped, converted and validated. Review Queue ready.',
-          });
-        }
-      });
+      if (import.meta.env.VITE_USE_MOCK === 'true') {
+        if (simulatorRef.current) simulatorRef.current.stop();
+        const { startProgressSimulation } = await import('../mocks/progressSimulator');
+        simulatorRef.current = startProgressSimulation(batch.id, (event) => {
+          batchProgress.pushEvent(event);
+        });
+      }
     } catch (err: any) {
       setIsProcessing(false);
-      setCurrentStage('failed');
       addToast({
         type: 'error',
         title: 'Pipeline Error',
@@ -178,33 +171,6 @@ export function UploadPage() {
       });
     }
   };
-
-  useEffect(() => {
-    logBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [agentLogs]);
-
-  const pipelineSteps = [
-    { key: 'ingest', label: 'Ingest', desc: 'MIME validation' },
-    { key: 'parse', label: 'Parse/OCR', desc: 'Document AI layout' },
-    { key: 'map', label: 'Map fields', desc: 'Gemini reasoning' },
-    { key: 'normalize', label: 'Normalize', desc: 'Unit math' },
-    { key: 'validate', label: 'Validate', desc: 'Business rules' },
-    { key: 'ready', label: 'Ready', desc: 'Human review' },
-  ];
-
-  const getStepIndex = (st: string) => {
-    switch (st) {
-      case 'ingest': return 0;
-      case 'parse': return 1;
-      case 'map': return 2;
-      case 'normalize': return 3;
-      case 'validate': return 4;
-      case 'ready': return 5;
-      default: return -1;
-    }
-  };
-
-  const activeStepIdx = getStepIndex(currentStage);
 
   const hasUnsupported = items.some(i => i.status === 'Unsupported');
 
@@ -427,147 +393,9 @@ export function UploadPage() {
         </div>
       </div>
 
-      {/* Screen 3: Live Run Pipeline Stepper & SSE Agent Activity */}
-      {(isProcessing || agentLogs.length > 0) && (
-        <div className="card" style={{ borderColor: 'var(--color-accent-muted)' }}>
-          <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Cpu size={18} color="var(--color-accent)" />
-              <h2 className="card-title" style={{ fontSize: '1rem', fontWeight: 600 }}>
-                Live Agent Execution
-              </h2>
-            </div>
-            {isProcessing && (
-              <button
-                className="btn btn-sm btn-danger"
-                onClick={handleCancelRun}
-              >
-                Cancel Run
-              </button>
-            )}
-          </div>
-
-          <div className="card-body">
-            {/* Informational Callout */}
-            <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)', background: 'var(--color-info-bg)', padding: '8px 12px', borderRadius: 6, marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Info size={16} color="var(--color-info)" style={{ flexShrink: 0 }} />
-              <span>You can leave this page; we will notify you when review is ready.</span>
-            </div>
-
-            {/* Pipeline Stepper (6 steps) */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative', marginBottom: 24, padding: '0 6px' }}>
-              {pipelineSteps.map((step, idx) => {
-                const isPassed = activeStepIdx > idx || currentStage === 'ready';
-                const isCurrent = activeStepIdx === idx && currentStage !== 'ready';
-
-                return (
-                  <div key={step.key} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 1, flex: 1 }}>
-                    <div
-                      style={{
-                        width: 32,
-                        height: 32,
-                        borderRadius: '50%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        background: isPassed ? 'var(--color-success)' : isCurrent ? 'var(--color-accent)' : 'var(--color-surface-2)',
-                        color: isPassed || isCurrent ? 'white' : 'var(--color-text-muted)',
-                        border: `2px solid ${isPassed ? 'var(--color-success)' : isCurrent ? 'var(--color-accent)' : 'var(--color-border)'}`,
-                        fontWeight: 600,
-                        fontSize: '0.8rem',
-                        transition: 'all 0.25s ease',
-                      }}
-                    >
-                      {isPassed ? <Check size={16} /> : isCurrent ? <RefreshCw size={14} className="animate-spin" /> : idx + 1}
-                    </div>
-                    <span style={{ fontSize: '0.8rem', fontWeight: isCurrent ? 700 : 500, color: isCurrent ? 'var(--color-accent)' : 'var(--color-text-primary)', marginTop: 6 }}>
-                      {step.label}
-                    </span>
-                    <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
-                      {step.desc}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Agent Activity Terminal */}
-            <div
-              style={{
-                background: '#0a0d14',
-                borderRadius: 8,
-                border: '1px solid #1e2536',
-                padding: '12px 14px',
-                fontFamily: 'monospace',
-                fontSize: '0.8rem',
-                color: '#d1d5db',
-                maxHeight: 200,
-                overflowY: 'auto',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#9ca3af', marginBottom: 6, borderBottom: '1px solid #1e2536', paddingBottom: 6 }}>
-                <Terminal size={14} /> Agent Activity Timeline (SSE Stream)
-              </div>
-              {agentLogs.length === 0 ? (
-                <div style={{ color: '#6b7280', fontStyle: 'italic' }}>Initializing autonomous agents…</div>
-              ) : (
-                agentLogs.map((log, idx) => (
-                  <div key={idx} style={{ display: 'flex', gap: 8, padding: '2px 0' }}>
-                    <span style={{ color: '#6b7280' }}>{new Date(log.timestamp).toLocaleTimeString()}</span>
-                    <span style={{ color: '#818cf8', fontWeight: 600 }}>[{log.agent}]</span>
-                    <span style={{ color: log.status === 'done' ? '#34d399' : log.status === 'error' ? '#f87171' : '#fef08a' }}>
-                      {log.message}
-                    </span>
-                  </div>
-                ))
-              )}
-              <div ref={logBottomRef} />
-            </div>
-
-            {/* Ready Callout CTA */}
-            {currentStage === 'ready' && (
-              <div
-                style={{
-                  marginTop: 16,
-                  padding: '14px 18px',
-                  background: 'var(--color-success-bg)',
-                  borderRadius: 8,
-                  border: '1px solid var(--color-success-border)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  flexWrap: 'wrap',
-                  gap: 12,
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <CheckCircle2 size={22} color="var(--color-success)" />
-                  <div>
-                    <div style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>Standardization Complete</div>
-                    <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>
-                      Source fields extracted and ready for validation.
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', gap: 10 }}>
-                  <button
-                    className="btn btn-primary btn-sm"
-                    onClick={() => navigate('/review')}
-                  >
-                    Open Review Screen <ArrowRight size={14} />
-                  </button>
-                  <button
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => navigate('/dataset')}
-                  >
-                    View Dataset
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+      {/* Screen 3: Live Agent Execution with real-time per-step progress bars & activity timeline */}
+      {(activeBatchId || isProcessing || batchProgress.state.status !== 'waiting') && (
+        <LiveAgentExecution progress={batchProgress} />
       )}
     </div>
   );

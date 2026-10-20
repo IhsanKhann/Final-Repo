@@ -11,6 +11,8 @@ export const ENDPOINTS = {
     get: (id: string) => `${BASE}/api/batches/${id}`,
     events: (id: string) => `${BASE}/api/batches/${id}/events`,
     cancel: (id: string) => `${BASE}/api/batches/${id}/cancel`,
+    retryFile: (batchId: string, fileId: string) => `${BASE}/api/batches/${batchId}/files/${fileId}/retry`,
+    retryStep: (batchId: string, step: string) => `${BASE}/api/batches/${batchId}/steps/${step}/retry`,
     records: (id: string, page = 1, perPage = 50) =>
       `${BASE}/api/batches/${id}/records?page=${page}&per_page=${perPage}`,
     export: (id: string, format: 'csv' | 'json', audit: boolean) =>

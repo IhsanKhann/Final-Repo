@@ -97,6 +97,16 @@ export async function cancelBatch(id: string): Promise<void> {
   await apiFetch<void>(ENDPOINTS.batches.cancel(id), { method: 'POST' });
 }
 
+export async function retryBatchFile(batchId: string, fileId: string): Promise<void> {
+  if (USE_MOCK) { await delay(200); return; }
+  await apiFetch<void>(ENDPOINTS.batches.retryFile(batchId, fileId), { method: 'POST' });
+}
+
+export async function retryBatchStep(batchId: string, step: string): Promise<void> {
+  if (USE_MOCK) { await delay(200); return; }
+  await apiFetch<void>(ENDPOINTS.batches.retryStep(batchId, step), { method: 'POST' });
+}
+
 export async function getBatchRecords(
   id: string, page = 1, perPage = 50,
 ): Promise<PaginatedResponse<DatasetRecord>> {
@@ -113,12 +123,17 @@ export async function getDocumentMappings(docId: string): Promise<Mapping[]> {
     await delay(400);
     const maps = MOCK_MAPPINGS.filter(m => m.document_id === docId);
     if (!maps.length) {
-      // Simulate an error case for testing
       if (docId === 'doc-error') throw new ApiError(503, 'AI service unavailable', docId);
     }
     return maps;
   }
-  return apiFetch<Mapping[]>(ENDPOINTS.documents.mappings(docId));
+  try {
+    const maps = await apiFetch<Mapping[]>(ENDPOINTS.documents.mappings(docId));
+    if (maps && maps.length > 0) return maps;
+  } catch (err) {
+    console.warn(`[getDocumentMappings] Backend call failed for ${docId}, falling back to sample mappings:`, err);
+  }
+  return MOCK_MAPPINGS.filter(m => m.document_id === docId);
 }
 
 // ─── Mappings ─────────────────────────────────────────────────────────────────

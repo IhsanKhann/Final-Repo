@@ -22,7 +22,7 @@ export function ReviewPage() {
   const [activeDocId, setActiveDocId] = useState('doc-001');
   const [activeDocIndex, setActiveDocIndex] = useState(0);
   const [selectedMappingId, setSelectedMappingId] = useState<string | null>('m2');
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(true);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [zoomLevel, setZoomLevel] = useState(100);
   const [docPage, setDocPage] = useState(3);
@@ -51,11 +51,14 @@ export function ReviewPage() {
     return (mappings ?? []).find(m => m.id === selectedMappingId) ?? mappings?.[0];
   }, [mappings, selectedMappingId]);
 
-  // Set initial selected mapping when loaded
+  // Set initial selected mapping and open drawer when loaded
   useEffect(() => {
-    if (mappings && mappings.length > 0 && !selectedMappingId) {
-      const firstNeedsReview = mappings.find(m => m.status === 'review' || m.status === 'missing');
-      setSelectedMappingId(firstNeedsReview ? firstNeedsReview.id : mappings[0].id);
+    if (mappings && mappings.length > 0) {
+      if (!selectedMappingId || !mappings.some(m => m.id === selectedMappingId)) {
+        const firstNeedsReview = mappings.find(m => m.status === 'review' || m.status === 'missing');
+        setSelectedMappingId(firstNeedsReview ? firstNeedsReview.id : mappings[0].id);
+      }
+      setDrawerOpen(true);
     }
   }, [mappings, selectedMappingId]);
 
@@ -637,6 +640,7 @@ export function ReviewPage() {
                     className="mapping-row"
                     onClick={() => {
                       setSelectedMappingId(mapping.id);
+                      setDrawerOpen(true);
                     }}
                     style={{
                       padding: 12,

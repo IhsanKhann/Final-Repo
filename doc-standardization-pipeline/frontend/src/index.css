@@ -1429,3 +1429,84 @@ code {
 @media (min-width: 768px) {
   .bottom-tab-bar { display: none; }
 }
+
+/* ─── Real-Time Pipeline Progress & Execution Styles ───────────────────── */
+.step-desktop-view {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.step-mobile-view {
+  display: none;
+}
+
+@media (max-width: 1023px) {
+  .step-desktop-view {
+    display: none;
+  }
+  .step-mobile-view {
+    display: block;
+  }
+}
+
+@keyframes stripe-move {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 40px 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress-fill {
+    transition: none !important;
+  }
+  .indeterminate-animated-bar,
+  .striped-running {
+    animation: none !important;
+    background-image: none !important;
+  }
+}
+
+.progress-bar-track {
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+}
+
+[data-theme="dark"] .progress-bar-track {
+  background: #141d33;
+  border-color: #2a3552;
+}
+
+[data-theme="dark"] .step-execution-row {
+  background: #121a2e;
+  border-color: #1e2842;
+}
+
+[data-theme="dark"] .step-execution-row:hover {
+  border-color: #2e3e68;
+}
+
+[data-theme="dark"] .overall-progress-card {
+  background: #121a2e;
+  border-color: #2a3552;
+}
+
+[data-theme="dark"] .files-progress-card {
+  background: #121a2e;
+  border-color: #2a3552;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
