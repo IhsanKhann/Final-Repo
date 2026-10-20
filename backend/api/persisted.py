@@ -258,6 +258,29 @@ class PersistedService:
         """
         return self._active_pack_or_reason()[0]
 
+    def _pack_for_request(
+        self, requested: str | None
+    ) -> tuple[packs_module.Pack | None, str | None]:
+        """The pack governing ONE run: what the caller asked for, else the stored default.
+
+        `CreateBatchPayload.pack_id` is required -- the route refuses an upload without it
+        -- so the caller has already named the rulebook it expects to be judged by, and
+        honouring that is the whole point of asking. Reading the stored control instead
+        would mean the run could be governed by a rulebook the caller never named, which
+        is the failure the two-pack block exists to prevent, arrived at from the other
+        side.
+
+        The stored control remains the fallback, so an operator can still set a default
+        and an internal caller with nothing to say does not have to invent an answer.
+        """
+        asked = (requested or "").strip()
+        if not asked:
+            return self._active_pack_or_reason()
+        try:
+            return packs_module.resolve_active_pack(asked), None
+        except Exception as exc:
+            return None, str(exc).strip() or type(exc).__name__
+
     def list_packs(self, *, tenant_id: str = DEFAULT_TENANT) -> list[SchemaPack]:
         try:
             loaded = packs_module.load_packs()
