@@ -102,7 +102,7 @@ API key configured**. Reproduce with `python -m backend.eval.make_documents` and
 | Records in the gold table | **126** — a document is not a record; one spreadsheet holds 30 |
 | Labels that are not fields | 269, counted and **never queued** at a reviewer |
 | Model calls | **0** — all 464 resolved deterministically |
-| Evidence rows | 423, hash-chained; a test mutates one and the chain fails |
+| Evidence rows | **463**, one per resolved field, hash-chained; a test mutates one and the chain fails |
 | Export | byte-identical across two requests |
 | Tests | 493 passing, 3 skipped, 4 failing (stale — see below) |
 
@@ -148,8 +148,10 @@ This section exists because a confident number with nothing behind it is the exa
 this product claims to prevent. Every item below was found by a test or a measurement.
 
 - **No real vision call has ever been made.** The scanned PDF rasterizes and reports
-  `Unavailable`, which routes it to review. It does **not** read the scan — in the run above
-  that file comes back `unsupported`. **Do not demo it.**
+  `Unavailable`, which routes it to review. It does **not** read the scan. In the run above
+  it contributes exactly one review-tray row, whose reason reads *"this document was
+  rasterized and not read (model-unavailable)"* — which is why 464 fields produce 463
+  evidence rows. **Do not demo it as working.**
 - **"100% conversion correctness" is one row.** Exactly one confirmed golden row expects a
   conversion. The converter is table-driven and correct; the denominator is 1.
 - **Mapping accuracy is 0.4667 and we are not rounding it up.** 10 of the 13 misses are
