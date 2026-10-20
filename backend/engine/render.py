@@ -91,23 +91,21 @@ def to_rows(
     field_order: Sequence[str],
     *,
     audit: bool = False,
-    record_keys: dict[str, str] | None = None,
 ) -> list[dict[str, str]]:
     """One row per RECORD, with columns in the pack's declared order.
 
-    `record_keys` maps a mapping id to which record inside its document it belongs to. A
-    document is not a record: one source document can hold many, a spreadsheet holding one
-    per row, and grouping by document alone produced one row where there were thirty, with
-    the last value written winning. Omitting it keeps the old document-level grouping, which is correct
-    only for a document that really is a single record.
+    A document is not a record: one source document can hold many, a spreadsheet holding
+    one per row, and grouping by document alone produced one row where there were thirty,
+    with the last value written winning. The key rides on the Mapping itself, so there is
+    no second lookup a caller can forget to pass and no parallel path to drift from this
+    one.
 
     A mapping with no target field (the `missing` lane after a refusal) still contributes
     its row, because a missing value is written and shown, never dropped.
     """
-    keys = record_keys or {}
     grouped: dict[tuple[str, str], dict[str, Mapping]] = {}
     for mapping in mappings:
-        group = (mapping.document_id, keys.get(mapping.id, ""))
+        group = (mapping.document_id, mapping.record_key)
         grouped.setdefault(group, {})
         if mapping.target_field:
             grouped[group][mapping.target_field] = mapping
@@ -132,17 +130,13 @@ def to_rows(
 
 
 def render_csv(
-    mappings: Iterable[Mapping],
-    field_order: Sequence[str],
-    *,
-    audit: bool = False,
-    record_keys: dict[str, str] | None = None,
+    mappings: Iterable[Mapping], field_order: Sequence[str], *, audit: bool = False
 ) -> bytes:
     """Deterministic CSV. LF terminator on every platform, declared column order."""
     columns = ["document_id", "record", *field_order]
     if audit:
         columns += list(AUDIT_COLUMNS)
-    rows = to_rows(mappings, field_order, audit=audit, record_keys=record_keys)
+    rows = to_rows(mappings, field_order, audit=audit)
 
     buffer = io.StringIO(newline="")
     writer = csv.DictWriter(buffer, fieldnames=columns, lineterminator="\n", extrasaction="ignore")
@@ -153,13 +147,9 @@ def render_csv(
 
 
 def render_json(
-    mappings: Iterable[Mapping],
-    field_order: Sequence[str],
-    *,
-    audit: bool = False,
-    record_keys: dict[str, str] | None = None,
+    mappings: Iterable[Mapping], field_order: Sequence[str], *, audit: bool = False
 ) -> bytes:
     """Deterministic JSON. Sorted keys, fixed separators, trailing newline."""
-    rows = to_rows(mappings, field_order, audit=audit, record_keys=record_keys)
+    rows = to_rows(mappings, field_order, audit=audit)
     text = json.dumps(rows, sort_keys=True, indent=2, separators=(",", ": "), ensure_ascii=False)
     return (text + "\n").encode("utf-8")

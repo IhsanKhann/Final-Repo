@@ -73,10 +73,6 @@ class Resolution(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     mapping: Mapping
-    #: Which record inside the document this decision belongs to, carried through from the
-    #: fact. The Mapping itself cannot hold it -- types.ts does not declare the field -- so
-    #: it travels here, to the ledger and to the repository column.
-    record_key: str = ""
     authority: Authority | None = None
     used_model: bool = False
     #: True when a precedent or a pack rule answered and a model call was therefore not
@@ -244,6 +240,7 @@ def resolve(
     mapping = Mapping(
         id=mapping_id,
         document_id=fact.document_id,
+        record_key=fact.record_key,
         source_label=fact.source_label,
         target_field=chosen or "",
         raw_value=fact.raw_value,
@@ -258,9 +255,11 @@ def resolve(
         source_location=fact.source_location,
     )
 
+    # Resolution carries RUN facts -- who decided, whether a model was consulted. The
+    # record key is a field fact and now travels on the Mapping itself, so there is one
+    # source for it rather than two that can disagree.
     return Resolution(
         mapping=mapping,
-        record_key=fact.record_key,
         authority=authority,
         used_model=used_model,
         model_call_skipped=model_call_skipped,

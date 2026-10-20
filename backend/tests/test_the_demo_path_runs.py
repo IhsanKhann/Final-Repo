@@ -217,6 +217,31 @@ def test_the_gold_table_has_one_row_per_record_not_per_document(client: TestClie
     assert len(ids) == len(set(ids)), "two records share an id"
 
 
+def test_the_record_key_reaches_the_frontend_on_every_mapping(client: TestClient) -> None:
+    """The reason the contract field was worth asking for.
+
+    The backend grouping being right is not enough: an individual Mapping and a review-queue
+    row have to carry the key too, or the frontend cannot group records or tell a reviewer
+    which record a flagged field belongs to. It was correct internally and absent from the
+    wire shape for a while, which is the kind of gap that looks fixed from the server side.
+    """
+    batch = _upload(client, "pacific_savings_rates.xlsx")
+    document_id = next(f["document_id"] for f in batch["files"] if f["document_id"])
+
+    mappings = client.get(f"/api/documents/{document_id}/mappings").json()
+    assert mappings, "no mappings to check"
+    assert all(m.get("record_key") for m in mappings), (
+        "a mapping arrived without its record key, so the UI cannot place it in a row"
+    )
+    assert len({m["record_key"] for m in mappings}) > 1, "every mapping claims one record"
+
+    for item in client.get("/api/review-queue").json():
+        assert item.get("record_key"), (
+            "a queued row does not say which record it belongs to; once a document has "
+            "thirty rows that row identifies nothing a reviewer can go and look at"
+        )
+
+
 def test_a_completed_batch_leaves_evidence_for_every_accepted_field(
     client: TestClient, tmp_path
 ) -> None:

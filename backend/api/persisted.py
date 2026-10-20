@@ -279,11 +279,7 @@ class PersistedService:
                         document_name=upload.name,
                     )
                     for resolution in outcome.resolutions:
-                        self._repo.upsert_mapping(
-                            resolution.mapping,
-                            tenant_id=tenant_id,
-                            record_key=resolution.record_key,
-                        )
+                        self._repo.upsert_mapping(resolution.mapping, tenant_id=tenant_id)
                         self._record_evidence(
                             resolution, batch_id=batch_id, pack=pack, tenant_id=tenant_id
                         )
@@ -412,7 +408,7 @@ class PersistedService:
                     run_id=batch_id,
                     document_id=mapping.document_id,
                     mapping_id=mapping.id,
-                    record_key=resolution.record_key,
+                    record_key=mapping.record_key,
                     source_label=mapping.source_label,
                     target_field=mapping.target_field,
                     raw_value=mapping.raw_value,
@@ -506,7 +502,6 @@ class PersistedService:
             return None
 
         mappings = self._repo.list_mappings(tenant_id=tenant_id, batch_id=batch_id)
-        keys = self._repo.record_keys(tenant_id=tenant_id, batch_id=batch_id)
         documents = {
             document.id: document
             for document in self._repo.list_documents(batch_id, tenant_id=tenant_id)
@@ -519,9 +514,7 @@ class PersistedService:
         # last value written win.
         grouped: dict[tuple[str, str], list[Mapping]] = {}
         for mapping in mappings:
-            grouped.setdefault((mapping.document_id, keys.get(mapping.id, "")), []).append(
-                mapping
-            )
+            grouped.setdefault((mapping.document_id, mapping.record_key), []).append(mapping)
 
         for document_id, record_key in sorted(grouped):
             group = grouped[(document_id, record_key)]
@@ -579,22 +572,17 @@ class PersistedService:
         if self._repo.get_batch(batch_id, tenant_id=tenant_id) is None:
             return None
         mappings = self._repo.list_mappings(tenant_id=tenant_id, batch_id=batch_id)
-        keys = self._repo.record_keys(tenant_id=tenant_id, batch_id=batch_id)
         order = self._field_order()
         if fmt == "json":
             return ExportFile(
                 filename=f"{batch_id}.json",
                 media_type="application/json",
-                content=render_module.render_json(
-                    mappings, order, audit=audit, record_keys=keys
-                ),
+                content=render_module.render_json(mappings, order, audit=audit),
             )
         return ExportFile(
             filename=f"{batch_id}.csv",
             media_type="text/csv",
-            content=render_module.render_csv(
-                mappings, order, audit=audit, record_keys=keys
-            ),
+            content=render_module.render_csv(mappings, order, audit=audit),
         )
 
     # -- documents -------------------------------------------------------------
@@ -682,6 +670,8 @@ class PersistedService:
                     document_id=mapping.document_id,
                     document_name=document.name if document else mapping.document_id,
                     batch_id=document.batch_id if document else "",
+                    record_key=mapping.record_key,
+                    record_label=mapping.record_label,
                     source_label=mapping.source_label,
                     target_field=mapping.target_field,
                     reason=mapping.reason,

@@ -110,6 +110,18 @@ class Conversion(Boundary):
 class Mapping(Boundary):
     id: str
     document_id: str
+    #: Which record inside the document. One document holds many records, so without this
+    #: on the wire the frontend can only group by document and the gold table is short by
+    #: however many records each file holds.
+    record_key: str = ""
+    #: How a human refers to that record, for the review drawer. Per the contract this is
+    #: filled only when the pack declares which fields identify a record, and absent means
+    #: the UI falls back to record_key. It stays absent today because the shipped pack
+    #: declares no identifying field -- the product type that would name a row is not one
+    #: of the fields it declares -- and inventing a label from whatever happened to be in
+    #: the row would be this layer deciding what identifies a record, which is the pack's
+    #: call and not ours.
+    record_label: str | None = None
     source_label: str
     target_field: str
     raw_value: str
@@ -236,6 +248,10 @@ class ReviewQueueItem(Boundary):
     document_id: str
     document_name: str
     batch_id: str
+    #: A reviewer cannot act on a field without knowing which record it belongs to: once a
+    #: document has thirty rows, "Rate on this spreadsheet" identifies nothing.
+    record_key: str = ""
+    record_label: str | None = None
     source_label: str
     target_field: str
     reason: str | None = None

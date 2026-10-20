@@ -82,14 +82,22 @@ def test_columns_follow_the_declared_order_not_the_data():
 
 
 def test_one_row_per_record_not_per_document():
-    """A document is not a record. Without the keys these three mappings collapse to two
-    rows (one per document); with them, doc-a's two records stay two rows."""
-    keys = {"m1": "row:2", "m3": "row:3", "m2": "row:9"}
-    without = render_csv(_mappings(), FIELD_ORDER).decode().splitlines()
-    with_keys = render_csv(_mappings(), FIELD_ORDER, record_keys=keys).decode().splitlines()
-    assert len(without) - 1 == 2, "two documents, so document-level grouping gives 2 rows"
-    assert len(with_keys) - 1 == 3, "three records, so record-level grouping gives 3 rows"
-    assert "row:2" in with_keys[1]
+    """A document is not a record: doc-a holds two, and they must stay two rows.
+
+    The key rides on the Mapping, so a caller cannot forget to pass it and silently get
+    the document-level grouping that made the dataset short.
+    """
+    keyed = [
+        m.model_copy(update={"record_key": key})
+        for m, key in zip(_mappings(), ("row:9", "row:2", "row:3"))
+    ]
+    rendered = render_csv(keyed, FIELD_ORDER).decode().splitlines()
+    assert len(rendered) - 1 == 3, "three records, so record-level grouping gives 3 rows"
+    assert "row:2" in rendered[1]
+
+    # Unkeyed mappings are one record per document -- correct for a single-record file.
+    collapsed = render_csv(_mappings(), FIELD_ORDER).decode().splitlines()
+    assert len(collapsed) - 1 == 2
 
 
 def test_the_line_ending_is_lf_on_every_platform():

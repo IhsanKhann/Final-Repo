@@ -111,20 +111,6 @@ class Repository(ABC):
         ("review", "missing") and you have the tray.
         """
 
-    @abstractmethod
-    def record_keys(
-        self,
-        *,
-        tenant_id: str = DEFAULT_TENANT,
-        document_id: str | None = None,
-        batch_id: str | None = None,
-    ) -> dict[str, str]:
-        """mapping id -> which record inside its document it belongs to.
-
-        A lookup rather than a second list_mappings variant that returns pairs: one source
-        of mappings cannot drift from another, and a caller that forgets the keys gets a
-        document-level grouping rather than a silently different set of rows.
-        """
 
     # -- events ----------------------------------------------------------------
 
@@ -197,15 +183,8 @@ CREATE INDEX IF NOT EXISTS ix_documents_batch ON documents (tenant_id, batch_id)
 CREATE TABLE IF NOT EXISTS mappings (
     tenant_id TEXT NOT NULL, id TEXT NOT NULL, document_id TEXT, target_field TEXT,
     source_label TEXT, status TEXT, confidence REAL, updated_at TEXT, body TEXT NOT NULL,
-    -- Which record inside the document. One source document can hold many records, so
-    -- grouping the gold table by document alone showed 1 row where there were 30.
-    -- It is a column rather than a field on Mapping because types.ts does not declare
-    -- one; if it gains `record_key?`, this column and list_mapping_records go away.
-    record_key TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (tenant_id, id)
 );
-CREATE INDEX IF NOT EXISTS ix_mappings_record
-    ON mappings (tenant_id, document_id, record_key);
 CREATE INDEX IF NOT EXISTS ix_mappings_document ON mappings (tenant_id, document_id);
 CREATE INDEX IF NOT EXISTS ix_mappings_status ON mappings (tenant_id, status);
 CREATE TABLE IF NOT EXISTS events (
@@ -249,15 +228,6 @@ class SqliteRepository(Repository):
     def _migrate(self) -> None:
         with closing(self._connect()) as conn, conn:
             conn.executescript(_SCHEMA)
-            # CREATE TABLE IF NOT EXISTS does nothing to a table that already exists, so a
-            # database created before record_key needs the column added explicitly. Guarded
-            # by a read of the existing columns rather than by catching the error, so a
-            # genuine failure here is still loud.
-            existing = {row[1] for row in conn.execute("PRAGMA table_info(mappings)")}
-            if "record_key" not in existing:
-                conn.execute(
-                    "ALTER TABLE mappings ADD COLUMN record_key TEXT NOT NULL DEFAULT ''"
-                )
 
     @staticmethod
     def _decode(model, raw: str):
@@ -344,34 +314,15 @@ class SqliteRepository(Repository):
 
     # -- mappings --------------------------------------------------------------
 
-    def upsert_mapping(
-        self,
-        mapping: Mapping,
-        *,
-        tenant_id: str = DEFAULT_TENANT,
-        record_key: str | None = None,
-    ) -> None:
-        """Store a mapping. `record_key=None` leaves an existing key untouched.
-
-        That matters for corrections: PATCH re-stores a mapping without knowing which
-        record it belongs to, and overwriting the key with "" would drop the row it came
-        from out of the gold table.
-        """
+    def upsert_mapping(self, mapping: Mapping, *, tenant_id: str = DEFAULT_TENANT) -> None:
         with closing(self._connect()) as conn, conn:
-            if record_key is None:
-                row = conn.execute(
-                    "SELECT record_key FROM mappings WHERE tenant_id=? AND id=?",
-                    (tenant_id, mapping.id),
-                ).fetchone()
-                record_key = (row["record_key"] if row else "") or ""
             conn.execute(
                 "INSERT INTO mappings (tenant_id,id,document_id,target_field,source_label,"
-                "status,confidence,updated_at,body,record_key) VALUES (?,?,?,?,?,?,?,?,?,?)"
+                "status,confidence,updated_at,body) VALUES (?,?,?,?,?,?,?,?,?)"
                 " ON CONFLICT(tenant_id,id) DO UPDATE SET document_id=excluded.document_id,"
                 " target_field=excluded.target_field, source_label=excluded.source_label,"
                 " status=excluded.status, confidence=excluded.confidence,"
-                " updated_at=excluded.updated_at, body=excluded.body,"
-                " record_key=excluded.record_key",
+                " updated_at=excluded.updated_at, body=excluded.body",
                 (
                     tenant_id,
                     mapping.id,
@@ -382,7 +333,6 @@ class SqliteRepository(Repository):
                     mapping.confidence,
                     _now(),
                     mapping.model_dump_json(),
-                    record_key,
                 ),
             )
 
@@ -392,31 +342,6 @@ class SqliteRepository(Repository):
                 "SELECT body FROM mappings WHERE tenant_id=? AND id=?", (tenant_id, mapping_id)
             ).fetchone()
         return None if row is None else self._decode(Mapping, row["body"])
-
-    def record_keys(
-        self,
-        *,
-        tenant_id: str = DEFAULT_TENANT,
-        document_id: str | None = None,
-        batch_id: str | None = None,
-    ) -> dict[str, str]:
-        sql = ["SELECT m.id AS id, m.record_key AS record_key FROM mappings m"]
-        params: list[object] = []
-        if batch_id is not None:
-            sql.append(
-                " JOIN documents d ON d.tenant_id = m.tenant_id AND d.id = m.document_id"
-            )
-        sql.append(" WHERE m.tenant_id=?")
-        params.append(tenant_id)
-        if document_id is not None:
-            sql.append(" AND m.document_id=?")
-            params.append(document_id)
-        if batch_id is not None:
-            sql.append(" AND d.batch_id=?")
-            params.append(batch_id)
-        with closing(self._connect()) as conn:
-            rows = conn.execute("".join(sql), tuple(params)).fetchall()
-        return {r["id"]: (r["record_key"] or "") for r in rows}
 
     def list_mappings(
         self,

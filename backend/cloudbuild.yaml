@@ -1,0 +1,36 @@
+# Build the backend image from the REPO ROOT.
+#
+# The context has to be the root, not backend/, because the app is imported as
+# `backend.api.main` and the pack loader resolves data/samples/ relative to the repo
+# root. `-f backend/Dockerfile .` is what gives the Dockerfile a root context.
+#
+#   gcloud builds submit --config backend/cloudbuild.yaml \
+#     --substitutions=_TAG=$(git rev-parse --short HEAD) .
+
+substitutions:
+  _REGION: us-central1
+  _REPO: backend
+  _IMAGE: canon
+  _TAG: latest
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - backend/Dockerfile
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE}:${_TAG}
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE}:latest
+      - .
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE}:${_TAG}
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE}:latest
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8
+
+timeout: 1200s
