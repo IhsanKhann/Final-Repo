@@ -15,12 +15,57 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Environment
+# ── Secrets ─────────────────────────────────────────────────────────────────
+# .env holds real keys. It is NEVER committed. .env.example holds empty keys.
+.env
 .env.local
 .env.*.local
+*.env
+!.env.example
+!Frontend/.env          # EXCEPTION: non-secret build flags only (VITE_USE_MOCK,
+                        # VITE_API_URL). Every VITE_* value is compiled into the
+                        # public bundle, so a secret here is public even if the
+                        # file were private. Never put a key in it.
+
+# Service accounts & cloud credentials
+*service-account*.json
+*credentials*.json
+gcp-key*.json
+application_default_credentials.json
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local stores (config, ledger, precedents)
+*.db
+*.sqlite
+*.sqlite3
+.canon/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+tf.plan
+
+# Generated demo documents & eval output
+backend/eval/generated/
+runs/
 
 # IDE & OS
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Source archive — holds all 11 problem statements. Only the PS-12 files belong
+# in this repo, and they live in data/samples/.
+sample.zip
