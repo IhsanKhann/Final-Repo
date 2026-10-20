@@ -50,6 +50,19 @@ def client(tmp_path, monkeypatch) -> TestClient:
     monkeypatch.delenv("PIPELINE", raising=False)
     monkeypatch.delenv("USE_FIXTURES", raising=False)
     deps.reset_wiring()
+
+    # Name the governing pack explicitly. This fixture used to configure NOTHING, because
+    # "the backend runs with nothing configured" is a real property -- but a second pack
+    # has landed, and more than one pack with no active_pack_id is a BLOCKED run by
+    # design: letting a run pick by filename order would make the governing rulebook
+    # depend on directory sorting. So the demo path names its pack, and
+    # test_more_than_one_pack_blocks_a_run_rather_than_guessing below tests the block on
+    # purpose instead of tripping over it.
+    from backend.engine.config import SqliteStore, set_control
+
+    set_control(
+        "active_pack_id", "banking_rates", store=SqliteStore(tmp_path / "config.db")
+    )
     try:
         yield TestClient(create_app())
     finally:
@@ -279,3 +292,33 @@ def test_the_export_is_byte_identical_across_two_requests(client: TestClient) ->
     second = client.get(url).content
     assert first == second
     assert b"\r\n" not in first
+
+
+def test_more_than_one_pack_blocks_a_run_rather_than_guessing(tmp_path, monkeypatch) -> None:
+    """Law III at the run level: we never pick which rulebook governs.
+
+    With two packs on disk and no `active_pack_id` stored, a run must BLOCK and name the
+    packs it found. Letting it pick the first by filename order would make the rulebook
+    that decided a value depend on directory sorting, and every provenance claim in the
+    product rests on knowing which pack governed.
+
+    Tested on purpose, because the alternative is that a second pack lands one day and
+    seven unrelated tests go red with a misleading message -- which is exactly what
+    happened before this test existed.
+    """
+    from backend.engine import packs as packs_module
+
+    available = packs_module.load_packs()
+    if len(available) < 2:
+        pytest.skip(f"only {len(available)} pack on disk; nothing to disambiguate")
+
+    with pytest.raises(packs_module.PackError) as caught:
+        packs_module.resolve_active_pack("")
+    message = str(caught.value)
+    for pack_id in available:
+        assert pack_id in message, f"the block does not name {pack_id}"
+    assert "no active pack is configured" in message
+
+    # And naming one resolves it, without touching the others.
+    chosen = packs_module.resolve_active_pack("banking_rates")
+    assert chosen.id == "banking_rates"

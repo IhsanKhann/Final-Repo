@@ -335,7 +335,7 @@ class PersistedService:
         file never ends a run, and the reason is recorded on the document and as an event
         rather than raised.
         """
-        pack, pack_reason = self._active_pack_or_reason()
+        pack, pack_reason = self._pack_for_request(payload.pack_id)
         seam = self._inference_seam(tenant_id)
 
         # Every operator-settable thing this run obeys is resolved HERE, once, before a

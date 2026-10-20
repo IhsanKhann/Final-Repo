@@ -7,7 +7,14 @@ COPY package*.json ./
 RUN npm install
 
 COPY . .
-RUN npm run build
+
+# VITE_* values are compiled into the bundle, so the backend URL has to be known at
+# BUILD time, not run time. Without this the image ships pointing at localhost:8000 and
+# every request from a visitor hits their own machine -- the page loads and every panel
+# is empty, which looks like a backend outage rather than a build mistake.
+ARG VITE_API_URL=http://localhost:8000
+ENV VITE_API_URL=${VITE_API_URL}
+RUN echo "VITE_API_URL=${VITE_API_URL}" > .env && npm run build
 
 # Stage 2: Serve with Nginx for Google Cloud Run
 FROM nginx:alpine
