@@ -414,6 +414,7 @@ export function ReviewPage() {
               {currentDoc.type === 'sheet' ? (
                 /* Excel / Spreadsheet preview mode with cell highlights */
                 <div
+                  className="source-paper-canvas"
                   style={{
                     background: '#ffffff',
                     border: '1px solid #cbd5e1',
@@ -513,6 +514,7 @@ export function ReviewPage() {
               ) : (
                 /* PDF / Document scan layout with spatial bounding boxes */
                 <div
+                  className="source-paper-canvas"
                   style={{
                     background: '#ffffff',
                     color: '#1e293b',

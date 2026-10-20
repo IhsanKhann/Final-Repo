@@ -131,9 +131,12 @@ export function InsightsPage() {
                 contentStyle={{
                   background: 'var(--color-surface)',
                   borderColor: 'var(--color-border)',
+                  color: 'var(--color-text-primary)',
                   borderRadius: 8,
                   fontSize: '0.8125rem',
+                  boxShadow: 'var(--shadow-md)',
                 }}
+                itemStyle={{ color: 'var(--color-text-primary)' }}
               />
               <Legend />
               <Area type="monotone" dataKey="accuracy" name="Mapping Accuracy (%)" stroke="#4f46e5" strokeWidth={2} fillOpacity={1} fill="url(#colorAccuracy)" />
