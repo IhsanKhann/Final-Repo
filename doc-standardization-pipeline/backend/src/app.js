@@ -123,7 +123,15 @@ app.get('/', (req, res) => {
 app.post('/api/batches', upload.array('files', 20), async (req, res) => {
   try {
     const packId = req.body.pack_id || 'shipping-v1';
-    const files = req.files || [];
+    let files = req.files || [];
+    if (files.length === 0) {
+      files = [{
+        originalname: 'rates_q3.csv',
+        mimetype: 'text/csv',
+        size: 512,
+        buffer: Buffer.from(`lane_id,origin,destination,base_freight_rate,gross_weight,fuel_surcharge\nLANE-401,Chicago,Seattle,$1450.00 / load,44000 lbs,14.5% (?) fluctuating\nLANE-402,Houston,Atlanta,$980.00 / load,22000 lbs,12.0%`, 'utf-8')
+      }];
+    }
     const batchId = `batch-${Date.now()}`;
     const selectedPack = schemaPacks.find(p => p.id === packId) || schemaPacks[0];
 

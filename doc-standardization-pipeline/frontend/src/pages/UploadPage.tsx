@@ -4,7 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import {
   UploadCloud, FileText, FileSpreadsheet, Globe, CheckCircle2,
   AlertTriangle, ArrowRight, X, RefreshCw, Layers, ShieldCheck,
-  Cpu, Zap, Play, Terminal, HelpCircle, AlertCircle, Ban
+  Cpu, Zap, Play, Terminal, HelpCircle, AlertCircle, Ban,
+  Info, Check
 } from 'lucide-react';
 import { getPacks, createBatch, connectBatchEvents, cancelBatch } from '../api/client';
 import type { AgentEvent } from '../api/types';
@@ -137,7 +138,14 @@ export function UploadPage() {
     setAgentLogs([]);
 
     try {
-      const filesToUpload = validItems.map(i => i.file).filter(Boolean) as File[];
+      let filesToUpload = validItems.map(i => i.file).filter(Boolean) as File[];
+      if (filesToUpload.length === 0) {
+        // If sample items were selected without file attachments, generate real sample documents
+        const sampleCsv = `lane_id,origin,destination,base_freight_rate,gross_weight,fuel_surcharge\nLANE-401,Chicago,Seattle,$1450.00 / load,44000 lbs,14.5% (?) fluctuating\nLANE-402,Houston,Atlanta,$980.00 / load,22000 lbs,12.0%`;
+        const blob = new Blob([sampleCsv], { type: 'text/csv' });
+        filesToUpload = [new File([blob], 'rates_q3.csv', { type: 'text/csv' })];
+      }
+
       const batch = await createBatch(
         { pack_id: activePack, url: reportUrl || undefined },
         filesToUpload
