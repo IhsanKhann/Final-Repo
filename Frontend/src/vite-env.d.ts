@@ -7,7 +7,7 @@
 // `npm run build` (which is `tsc && vite build`) and in CI.
 
 interface ImportMetaEnv {
-  /** 'true' serves every screen from mockData.ts; 'false' calls the real backend. */
+  /** Unused since the mock path was deleted; kept so the type matches any stale .env. */
   readonly VITE_USE_MOCK: string;
   /** Base URL of the FastAPI backend, e.g. http://localhost:8000 */
   readonly VITE_API_URL: string;

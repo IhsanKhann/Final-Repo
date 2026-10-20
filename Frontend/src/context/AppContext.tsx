@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import type { ReactNode } from 'react';
+import { getPacks } from '../api/client';
 
 // ─── Toast System ────────────────────────────────────────────────────────────
 export interface Toast {
@@ -96,7 +97,32 @@ interface PackContextValue {
 const PackContext = createContext<PackContextValue | null>(null);
 
 export function PackProvider({ children }: { children: ReactNode }) {
-  const [activePack, setActivePack] = useState('mining-v1');
+  // ⚠ This defaulted to the literal 'mining-v1' — a pack id from the deleted mock data,
+  // which no longer exists on any server. Every upload sent it until the user happened to
+  // visit the Schema page and pick one, and the backend refused the batch with
+  // "the configured active pack 'mining-v1' is not here" after the files had uploaded.
+  //
+  // Empty is the honest start: the server knows which packs exist and we do not, so we
+  // ask it rather than guessing. An empty pack_id also lets the backend fall back to its
+  // own configured active pack, which is the behaviour the config layer is there for.
+  const [activePack, setActivePack] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    getPacks()
+      .then(packs => {
+        // Only adopt a default if the user has not already chosen one.
+        if (!cancelled && packs.length > 0) {
+          setActivePack(current => current || packs[0].id);
+        }
+      })
+      .catch(() => {
+        /* Health surfaces an unreachable backend; a failed pack list must not blank
+           the whole app, and an empty activePack is still a valid request. */
+      });
+    return () => { cancelled = true; };
+  }, []);
+
   return (
     <PackContext.Provider value={{ activePack, setActivePack }}>
       {children}

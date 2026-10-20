@@ -77,7 +77,16 @@ class PrecedentStore(ABC):
 
 
 def _default_db_path() -> Path:
-    return Path(__file__).resolve().parent.parent / ".data" / "memory.db"
+    import os
+
+    # Overridable, like the ledger's. Without this every test and every run shared one
+    # precedent store, so a "clean" run silently inherited corrections made hours earlier
+    # and `precedents_applied` was not reproducible from a fresh checkout -- which is
+    # exactly the number we use to prove the feedback loop is real.
+    return Path(
+        os.environ.get("MEMORY_DB_PATH")
+        or Path(__file__).resolve().parent.parent / ".data" / "memory.db"
+    )
 
 
 def _now() -> str:
