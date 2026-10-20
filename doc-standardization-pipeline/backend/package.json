@@ -1,0 +1,28 @@
+{
+  "name": "doc-standardization-backend",
+  "version": "1.0.0",
+  "description": "Enterprise Document AI & OpenAI Agentic Standardization Backend with BigQuery Feedback Loop",
+  "main": "src/app.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "nodemon src/app.js"
+  },
+  "dependencies": {
+    "@google-cloud/bigquery": "^7.9.0",
+    "@google-cloud/documentai": "^8.8.0",
+    "@google-cloud/storage": "^7.11.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "multer": "^1.4.5-lts.1",
+    "openai": "^4.52.0",
+    "pdf-lib": "^1.17.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
