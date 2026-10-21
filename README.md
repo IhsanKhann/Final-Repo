@@ -1,6 +1,12 @@
-# Canon — Cross-Source Data Standardization & Transformation Agent
+# Canon
 
-**National AI Hackathon '26 · Problem Statement PS-12** · Team: Ihsan, Ali, Tahreem
+**A cross-source data standardization agent. Every value in the output points back at the
+page, cell or character span it came from.**
+
+[![License: BUSL-1.1](https://img.shields.io/badge/license-BUSL--1.1-00529b.svg)](LICENSE)
+[![Status: active development](https://img.shields.io/badge/status-active%20development-2da44e.svg)](#where-this-is-going)
+[![Python 3.11](https://img.shields.io/badge/python-3.11-3776ab.svg)](backend/requirements.txt)
+[![React + TypeScript](https://img.shields.io/badge/react-TypeScript-3178c6.svg)](Frontend/package.json)
 
 Organisations that aggregate data from hundreds of external sources all hit the same wall:
 every source reports equivalent information with different layouts, terminology, units and
@@ -11,10 +17,21 @@ Canon ingests those documents, maps each field onto one the **customer** declare
 rulebook, converts units using factors the **customer** declared, flags what it is unsure
 about for a human instead of guessing, and learns from every correction.
 
-**Every value in the output points back at the page, cell or character span it came from.**
-
 Three agents propose. A deterministic backbone decides. The analyst corrects. The next run
 is measurably better — **3 corrections resolved 68 fields**, measured below.
+
+### Where this is going
+
+Canon began as a build at the **National AI Hackathon '26** against
+[Problem Statement PS-12](docs/PROBLEM_STATEMENT.md), by
+[Ihsan](https://github.com/IhsanKhann), [Tahreem](https://github.com/tahreem05) and
+[Ali](https://github.com/investpro599-a11y) — [what each of us built →](CONTRIBUTORS.md).
+
+**It is no longer a hackathon deliverable.** It is in continued development, and being
+scaled deliberately rather than quickly: the [*What is NOT true yet*](#what-is-not-true-yet)
+section below is permanent, and it is the roadmap. An item leaves it when a test or a
+measurement moves it, not when it feels done — because a confident number with nothing
+behind it is the exact failure this product exists to prevent.
 
 ---
 
@@ -270,3 +287,29 @@ corrections. Computed from its own counters, not estimated.
 | The data, and two measured facts that changed how we build | [`data/samples/DATASETS.md`](data/samples/DATASETS.md) |
 | The API contract — `types.ts` is law and the backend conforms to it | `Frontend/src/api/types.ts` |
 | Per-lane build order and ownership | [`docs/`](docs/) |
+
+---
+
+## Team
+
+Three lanes, run in parallel.
+
+| | | |
+|---|---|---|
+| **[Ihsan](https://github.com/IhsanKhann)** | architecture · backend · deployment | The deterministic backbone and the rule the system is organised around: the layer that can be wrong may only propose, and the layer that decides cannot call a model. The pack/engine split, the authority order, the three-lane gate, the evidence ledger, precedent memory, and the five laws with the tests that enforce them. |
+| **[Tahreem](https://github.com/tahreem05)** | product design · testing · research | The product as the analyst meets it — the Rossum-style review drawer and queue, which is where the hard case lives, plus the user portal and full light/dark/system theming. Ran the testing pass that found the stepper and layout faults, did the PS-12 research the packs were authored against, and is one of the two named people who hand-confirmed all 30 golden-set rows. |
+| **[Ali](https://github.com/investpro599-a11y)** | deployment · backend | The path from a working repository to a reachable URL. Vercel build and deploy, the serverless API wrapper, self-contained lambdas, per-step progress over SSE and the live batch pipeline — and a zero-cloud fail-safe extraction path so the demo could not be taken down by a missing credential. |
+
+Ali's 15 commits are on `alibranch`, which was never merged, so **GitHub's contributor list
+shows two of the three of us.** That is an artefact of counting only the default branch, not
+a record of who did the work. The branch is kept rather than deleted so the work stays
+attributable — [full credit, per lane →](CONTRIBUTORS.md).
+
+## License
+
+[**Business Source License 1.1**](LICENSE). The source is public and readable; evaluation,
+academic and any non-production use are free; **commercial production use requires a
+licence**, and offering Canon or a derivative to third parties as a hosted or embedded
+service is not granted. The whole work converts to **Apache-2.0 on 2030-10-20**.
+
+Commercial licensing: [designwithIhsan@gmail.com](mailto:designwithIhsan@gmail.com).
