@@ -73,8 +73,9 @@ source is public and readable, non-production and evaluation use is free, and co
 production use requires a licence from the Licensor; the whole work converts to Apache-2.0
 on 2030-10-20.
 
-Each contributor retains copyright in their own contributions. The licence is granted over
-the combined work with the agreement of all three contributors named above.
+Each contributor retains copyright in their own contributions. Relicensing the combined work,
+or granting a commercial licence over it, therefore requires the agreement of all three
+contributors named above.
 
 Contributions after the hackathon are accepted on the understanding that they are licensed
 under the same terms. If you contribute and would rather not be listed here, say so and you
